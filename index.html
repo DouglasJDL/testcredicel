@@ -1,0 +1,2857 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Editor Etiqueta</title>
+
+  <!-- PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f6f7f9;
+      --card:#fff;
+      --border:#e5e7eb;
+      --text:#111827;
+      --muted:#6b7280;
+      --radius:14px;
+      --shadow:0 10px 24px rgba(0,0,0,.06);
+      --focus: rgba(59,130,246,.18);
+
+      --danger:#b91c1c;
+      --dangerBorder:#fecaca;
+      --dangerBg:#fef2f2;
+
+      --padGrid: 6mm;
+      --gapGrid: 6mm;
+      --padFull: 10mm;
+    }
+
+    *{box-sizing:border-box}
+    html, body{height:100%}
+    body{
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      margin:20px;
+      background:var(--bg);
+      color:var(--text);
+      height:100vh;
+      overflow:hidden;
+    }
+    h2{margin:0 0 14px;font-size:18px}
+
+    .wrap{
+      display:grid;
+      grid-template-columns: minmax(340px, 520px) 1fr;
+      gap:16px;
+      align-items:stretch;
+      height: calc(100vh - 40px - 32px);
+      min-height: 540px;
+    }
+    @media (max-width: 980px){
+      body{overflow:auto;height:auto;}
+      .wrap{grid-template-columns:1fr;height:auto;min-height:auto;}
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      min-height:0;
+    }
+
+    #leftCard{display:flex;flex-direction:column;height:100%;min-height:0}
+    #listView, #formView{display:flex;flex-direction:column;flex:1;min-height:0}
+    .leftScrollArea{flex:1;min-height:0;overflow:auto;padding-right:4px}
+
+    #paperPreviewWrap{
+      position:relative;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      overflow:auto;
+      height:100%;
+      min-height:0;
+    }
+
+    .cardHeader{
+      display:flex;align-items:center;justify-content:space-between;
+      gap:10px;margin-bottom:12px
+    }
+    .cardHeader h3{margin:0;font-size:14px}
+    .subtle{font-size:12px;color:var(--muted);line-height:1.3}
+
+    button{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      padding:10px 12px;border-radius:12px;cursor:pointer;font-weight:900;
+      border:1px solid transparent;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease, box-shadow .15s ease, opacity .15s ease;
+      user-select:none;
+      background:#fff;
+    }
+    button:active{ transform: translateY(1px); }
+    button:focus-visible{ outline:none; box-shadow:0 0 0 4px var(--focus); }
+    button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btnPrimary{ background:#2563eb; color:#fff; }
+    .btnPrimary:hover{ background:#1d4ed8; }
+    .btnSuccess{ background:#16a34a; color:#fff; }
+    .btnSuccess:hover{ background:#15803d; }
+    .btnNeutral{ background:#eef2f7; color:#0f172a; border-color:#dbe3ee; }
+    .btnNeutral:hover{ background:#e5e7eb; }
+
+    .btnIcon{
+      width:40px;height:40px;padding:0;border-radius:12px;
+      background:#ffffff;border:1px solid #e5e7eb;color:#0f172a;
+    }
+    .btnIcon:hover{background:#f8fafc;border-color:#dbe3ee}
+    .btnIcon:focus-visible{ box-shadow:0 0 0 4px rgba(148,163,184,.22); }
+    .btnIcon.danger{ color:#b91c1c; background:#fff; border-color:#fee2e2; }
+    .btnIcon.danger:hover{ background:#fef2f2; border-color:#fecaca; }
+    .btnIcon.primary{ color:#1d4ed8; background:#fff; border-color:#bfdbfe; }
+    .btnIcon.primary:hover{ background:#eff6ff; border-color:#93c5fd; }
+    .btnIcon svg{width:18px;height:18px;display:block}
+
+    .spin{
+      width:18px;height:18px;border-radius:999px;
+      border:2px solid currentColor;border-top-color:transparent;
+      animation:spin .8s linear infinite;
+      display:block;
+    }
+    @keyframes spin{ to{ transform: rotate(360deg); } }
+
+    .form{display:grid;grid-template-columns: 1fr 1fr;gap:12px 10px;}
+    .field{min-width:0}
+    .span2{grid-column:1 / -1}
+    label{display:block;font-size:12px;color:#374151;margin:0 0 6px}
+    input,select{
+      width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:12px;
+      font-size:14px;background:#fff;outline:none;
+    }
+    input:focus,select:focus{border-color:#93c5fd; box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+    select:invalid{color:#9ca3af}
+    option{color:#111827}
+
+    .fieldError{
+      display:none;margin-top:6px;padding:8px 10px;border-radius:12px;
+      border:1px solid var(--dangerBorder);background:var(--dangerBg);color:var(--danger);
+      font-size:12px;line-height:1.35;
+    }
+    .fieldError.show{display:block}
+    .isInvalid{border-color:#fca5a5 !important; box-shadow:0 0 0 3px rgba(239,68,68,.12) !important;}
+
+    .toggleRow{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;
+      border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;
+    }
+    .toggleRow input{width:auto;padding:0;margin:0}
+    .toggleRow span{font-size:13px;color:#0f172a;font-weight:900}
+    .toggleRow small{display:block;font-size:12px;color:#64748b;font-weight:700}
+
+    .help{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.35}
+
+    .listEmpty{
+      border:1px dashed #cbd5e1;border-radius:14px;background:#fafafa;padding:14px;
+      color:#334155;font-size:13px;line-height:1.4;
+    }
+    .items{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:2px}
+    .item{
+      border:1px solid #e5e7eb;border-radius:14px;padding:10px 12px;background:#fff;
+      transition: border-color .12s ease, box-shadow .12s ease, transform .05s ease;
+      cursor:pointer;
+      --pairColor:#93c5fd;
+      --pairGlow: rgba(37,99,235,.12);
+      --pairGlowStrong: rgba(37,99,235,.18);
+    }
+    .item:hover{border-color:var(--pairColor); box-shadow:0 10px 24px var(--pairGlow);}
+    .item.selected{border-color:var(--pairColor); box-shadow:0 12px 28px var(--pairGlowStrong);}
+    .item:active{ transform: translateY(1px); }
+    .itemHead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .itemTitleRow{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+    .pairDot{width:10px;height:10px;border-radius:999px;background:var(--pairColor);box-shadow:0 0 0 3px rgba(15,23,42,.06);flex:0 0 auto;}
+    .itemName{font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%;}
+    .itemActions{display:flex;gap:8px;flex-wrap:nowrap;align-items:center}
+    .itemDetails{display:none;margin-top:10px;padding-top:10px;border-top:1px solid #eef2f7;color:#475569;font-size:12px;line-height:1.45;}
+    .item.expanded .itemDetails{ display:block; }
+    .metaGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
+    .metaGrid .span2{grid-column:1/-1}
+    .metaPill{
+      display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;
+      border:1px solid #e5e7eb;background:#f8fafc;color:#0f172a;font-weight:900;font-size:11px;margin-top:10px;
+    }
+
+    /* Selector API */
+    .apiToolbar{
+      display:grid;
+      grid-template-columns: 1fr 180px;
+      gap:10px;
+    }
+    .apiList{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      max-height: 320px;
+      overflow:auto;
+      padding-right:2px;
+    }
+    .apiRow{
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      padding:10px 12px;
+      background:#fff;
+      cursor:pointer;
+      transition: border-color .12s ease, box-shadow .12s ease, transform .05s ease;
+    }
+    .apiRow:hover{ border-color:#93c5fd; box-shadow:0 10px 24px rgba(37,99,235,.10); }
+    .apiRow:active{ transform: translateY(1px); }
+    .apiRow.selected{ border-color:#2563eb; box-shadow:0 12px 28px rgba(37,99,235,.18); }
+    .apiRowTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .apiRowTitle{font-weight:900;font-size:12px;line-height:1.2;max-height:2.4em;overflow:hidden}
+    .apiRowId{font-size:10px;color:#64748b;font-weight:900;white-space:nowrap}
+    .apiRowMeta{margin-top:8px;font-size:11px;color:#334155;line-height:1.35}
+    .apiRowMeta b{font-weight:900}
+    .apiEmpty{
+      border:1px dashed #cbd5e1;border-radius:14px;background:#fafafa;padding:12px;
+      color:#334155;font-size:12px;line-height:1.4;
+    }
+
+    /* Preview */
+    #paperPreview{width:100%;display:flex;flex-direction:column;gap:12px;align-items:center;padding:0;margin:0;}
+    .emptyPreview{
+      width:100%;border:1px dashed #cbd5e1;border-radius:16px;background:#fafafa;
+      padding:18px;max-width:760px;text-align:center;color:#334155;
+    }
+    .emptyPreview h4{margin:0 0 6px;font-size:14px}
+    .emptyPreview p{margin:0;font-size:12px;color:#64748b;line-height:1.4}
+
+    .page-shell{
+      position:relative;
+      width: calc(215.9mm * var(--previewScale, 0.58));
+      height: calc(279.4mm * var(--previewScale, 0.58));
+      background:#fff;border:1px solid var(--border);border-radius:12px;
+      box-shadow:0 8px 20px rgba(0,0,0,.06);
+      overflow:hidden;
+      transition: border-color .12s ease, box-shadow .12s ease;
+      --pairColor:#93c5fd;
+      --pairGlowStrong: rgba(37,99,235,.18);
+    }
+    .page-shell.hlpage{border-color:var(--pairColor); box-shadow:0 12px 28px var(--pairGlowStrong);}
+    .pageLabel{
+      position:absolute;top:10px;right:10px;
+      font-size:11px;font-weight:900;padding:5px 10px;border-radius:999px;
+      background:rgba(15,23,42,.86);color:#fff;pointer-events:none;letter-spacing:.3px;
+    }
+    .page-inner{
+      width:215.9mm;height:279.4mm;
+      transform: scale(var(--previewScale, 0.58));
+      transform-origin: top left;
+    }
+    .paper-page{
+      width:215.9mm;height:279.4mm;
+      padding: var(--pad, var(--padGrid));
+      display:grid;
+      gap: var(--gap, var(--gapGrid));
+      background:#fff;
+    }
+    .paper-grid{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .paper-full{ --pad: var(--padFull); --gap: 0mm; grid-template-columns: 1fr; grid-template-rows: 1fr; }
+
+    .slot{
+      position:relative;display:flex;justify-content:center;align-items:center;
+      overflow:hidden;border-radius:10px;cursor:pointer;
+      --pairColor:#93c5fd;
+      --pairGlowStrong: rgba(37,99,235,.18);
+      background:#fff;
+    }
+    .slot img{width:100%;height:100%;object-fit:contain;display:block}
+
+    .pairMark{
+      position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:999px;
+      background: var(--pairColor);
+      box-shadow:0 0 0 3px rgba(15,23,42,.06);
+      pointer-events:none;
+    }
+
+    .slot.hl{outline:4px solid var(--pairColor);outline-offset:-4px;box-shadow:0 0 0 4px var(--pairGlowStrong);}
+    .hlTag{
+      position:absolute;bottom:8px;right:8px;font-size:11px;font-weight:900;
+      padding:4px 8px;border-radius:999px;background:var(--pairColor);color:#fff;pointer-events:none;
+      box-shadow:0 6px 14px rgba(0,0,0,.12);
+    }
+
+    .slot.draft{outline:3px dashed #2563eb;outline-offset:-3px;box-shadow:0 0 0 4px rgba(37,99,235,.12);}
+    .draftTag{position:absolute;top:8px;left:8px;font-size:11px;font-weight:900;padding:4px 8px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;pointer-events:none;}
+
+    #workCanvas{display:none}
+    #__svgHostHidden{position:absolute;left:-99999px;top:-99999px}
+
+    .loadingOverlay{
+      position:absolute; inset:0;
+      display:none;
+      align-items:center; justify-content:center;
+      background:rgba(255,255,255,.72);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+      padding: 14px;
+    }
+    .loadingBox{
+      display:flex; align-items:flex-start; gap:10px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      border-radius:14px;
+      padding:12px 14px;
+      box-shadow: var(--shadow);
+      color:#0f172a;
+      max-width: 520px;
+    }
+    .loadingBox .title{font-weight:900;font-size:12px;line-height:1.2}
+    .loadingBox .sub{margin-top:4px;font-weight:700;font-size:12px;color:#64748b;line-height:1.3}
+
+    .modalOverlay{
+      position:fixed;inset:0;z-index:999999;
+      background:rgba(15,23,42,.55);
+      display:none;align-items:center;justify-content:center;
+      padding:18px;
+    }
+    .modal{
+      width:min(780px, 100%);
+      background:#fff;border:1px solid #e5e7eb;border-radius:16px;
+      box-shadow:0 30px 70px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .modalHead{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:14px;border-bottom:1px solid #eef2f7;background:#f8fafc;
+    }
+    .modalHead h4{margin:0;font-size:14px}
+    .modalBody{padding:14px;max-height:min(62vh, 520px);overflow:auto}
+    .modalActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;padding:14px;border-top:1px solid #eef2f7;background:#fff}
+    .modalText{font-size:13px;color:#0f172a;line-height:1.45}
+    .errList{margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;}
+    .errList li{border:1px solid #fee2e2;background:#fef2f2;color:#991b1b;border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.35;}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid #e5e7eb;background:#f8fafc;font-size:11px;font-weight:900;color:#0f172a;}
+
+    @media print{
+      html, body{margin:0 !important;padding:0 !important;background:#fff !important;}
+      body{ overflow:visible !important; height:auto !important; }
+      body > :not(#printRoot){ display:none !important; }
+      #printRoot{display:block !important;position:static !important;width:215.9mm;margin:0 !important;padding:0 !important;background:#fff !important;overflow:visible !important;}
+      *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;}
+      .print-page{
+        width:215.9mm !important;height:279.4mm !important;margin:0 !important;padding:0 !important;background:#fff !important;
+        page-break-after: always; break-after: page;
+        page-break-inside: avoid; break-inside: avoid;
+      }
+      .print-page:last-child{page-break-after:auto;break-after:auto;}
+      .paper-page{ background:#fff !important; }
+      .slot{ background:#fff !important; border-radius:0 !important; cursor:default !important; }
+      @page{ size: letter portrait; margin:0; }
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Editor de etiqueta</h2>
+
+  <div class="wrap" id="workspace">
+    <!-- IZQUIERDA -->
+    <div class="card" id="leftCard">
+
+      <!-- LISTA -->
+      <div id="listView">
+        <div class="cardHeader">
+          <div>
+            <h3>Productos</h3>
+            <div class="subtle">Click en una etiqueta del preview para seleccionar el producto.</div>
+          </div>
+
+          <div class="btnRow" style="gap:8px">
+            <button class="btnPrimary" id="btnShowForm" type="button">➕ Agregar</button>
+
+            <!-- ✅ Recargar API + sincronizar -->
+            <button class="btnIcon primary" id="btnReloadApi" type="button" title="Recargar API y sincronizar etiquetas" aria-label="Recargar API y sincronizar etiquetas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-3-6.7"/>
+                <path d="M21 3v6h-6"/>
+              </svg>
+            </button>
+
+            <!-- Exportar catálogo API -->
+            <button class="btnIcon primary" id="btnExportCatalog" type="button" title="Exportar Excel (Importar + Referencia)" aria-label="Exportar Excel (Importar + Referencia)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+            </button>
+
+            <button class="btnIcon primary" id="btnImport" type="button" title="Importar Excel" aria-label="Importar Excel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5-5 5 5"/>
+                <path d="M12 5v14"/>
+              </svg>
+            </button>
+
+            <button class="btnIcon primary" id="btnPdf" type="button" style="display:none" title="Exportar PDF" aria-label="Exportar PDF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6"/>
+                <path d="M8 13h8"/>
+                <path d="M8 17h5"/>
+              </svg>
+            </button>
+
+            <button class="btnIcon primary" id="btnPrint" type="button" style="display:none" title="Imprimir" aria-label="Imprimir">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9V2h12v7"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <path d="M6 14h12v8H6z"/>
+              </svg>
+            </button>
+
+            <button class="btnIcon danger" id="btnResetAll" type="button" style="display:none" title="Limpiar todo" aria-label="Limpiar todo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M7 21h10"/>
+                <path d="M16 3l5 5-11 11H5L2 16 16 3z"/>
+                <path d="M15 4l5 5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="leftScrollArea" id="listScrollArea">
+          <div id="itemsWrap"></div>
+
+          <p class="help">
+            IDs SVG soportados (si existen en tu plantilla):<br>
+            <b>nombre_producto</b>, <b>marca</b>, <b>modelo</b>, <b>pantalla</b>, <b>bateria</b>, <b>camara</b>, <b>capacidad</b>,<br>
+            <b>precio_antes</b>, <b>precio_ahora</b>, <b>cuota_semanal</b>, <b>fecha_vigencia</b>, <b>fecha_impresion</b>, <b>descuento</b>, <b>color</b>, <b>cover</b>.
+          </p>
+        </div>
+      </div>
+
+      <!-- FORM -->
+      <div id="formView" style="display:none">
+        <div class="cardHeader">
+          <div>
+            <h3 id="formTitle">Agregar producto</h3>
+            <div class="subtle" id="formSubtitle">Busca y selecciona un dispositivo, luego plantilla/tamaño/cantidad.</div>
+          </div>
+        </div>
+
+        <div class="leftScrollArea">
+          <div class="form">
+            <input id="fApiId" type="hidden" value="">
+
+            <div class="field span2">
+              <label>Dispositivo (API)</label>
+
+              <div class="apiToolbar">
+                <div class="field">
+                  <input id="apiSearch" placeholder="Buscar (marca, modelo, producto, ID…)" autocomplete="off">
+                </div>
+                <div class="field">
+                  <select id="apiBrand">
+                    <option value="">Todas las marcas</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="apiList" id="apiList"></div>
+
+              <div class="fieldError" id="eApi"></div>
+              <div class="help">Estado API: <b id="apiStatus">cargando…</b></div>
+              <div class="help" id="apiPicked" style="display:none"></div>
+            </div>
+
+            <div class="field">
+              <label>Plantilla (SVG)</label>
+              <select id="fTemplate" required>
+                <option value="" selected disabled>Selecciona una plantilla…</option>
+                <option value="promocion1.svg">Promoción</option>
+                <option value="normal1.svg">Normal</option>
+                <option value="liquidacion1.svg">Liquidación</option>
+                <option value="oferta1.svg">Oferta</option>
+              </select>
+              <div class="fieldError" id="eTemplate"></div>
+            </div>
+
+            <div class="field">
+              <label>Tamaño</label>
+              <select id="fSize" required>
+                <option value="" selected disabled>Selecciona un tamaño…</option>
+                <option value="quarter">1/4 (4 por hoja)</option>
+                <option value="half_h">Media hoja horizontal (2 por hoja)</option>
+                <option value="full">Carta completa (1 por hoja)</option>
+              </select>
+              <div class="fieldError" id="eSize"></div>
+            </div>
+
+            <div class="field">
+              <label>Cantidad</label>
+              <input id="fQty" type="number" min="1" step="1" value="1">
+              <div class="fieldError" id="eQty"></div>
+            </div>
+
+            <div class="field">
+              <label>Vigencia</label>
+              <div class="toggleRow">
+                <input id="fUseVig" type="checkbox">
+                <div>
+                  <span>Agregar fecha de vigencia</span>
+                  <small>Si lo marcas, debes elegir inicio y fin</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="field span2" id="vigDates" style="display:none">
+              <div class="form" style="grid-template-columns:1fr 1fr; gap:10px">
+                <div class="field">
+                  <label>Fecha inicial</label>
+                  <input id="fVigStart" type="date">
+                  <div class="fieldError" id="eVigStart"></div>
+                </div>
+                <div class="field">
+                  <label>Fecha final</label>
+                  <input id="fVigEnd" type="date">
+                  <div class="fieldError" id="eVigEnd"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <p class="help">En Agregar/Editar, el preview muestra lo que vas a imprimir.</p>
+        </div>
+
+        <div class="btnRow" style="margin-top:12px">
+          <button class="btnSuccess" id="btnSave" type="button" disabled>💾 Guardar</button>
+          <button class="btnNeutral" id="btnCancel" type="button">↩️ Volver</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- DERECHA -->
+    <div class="card" id="paperPreviewWrap">
+      <div id="paperPreview"></div>
+
+      <div class="loadingOverlay" id="previewLoading" aria-hidden="true">
+        <div class="loadingBox">
+          <span class="spin"></span>
+          <div>
+            <div class="title" id="previewLoadingText">Cargando previsualización…</div>
+            <div class="sub">Generando imágenes. Si importaste muchas etiquetas, puede tardar un poco.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="printRoot" style="display:none"></div>
+  <canvas id="workCanvas"></canvas>
+  <div id="__svgHostHidden"></div>
+
+  <!-- Modal -->
+  <div class="modalOverlay" id="modalOverlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modalHead">
+        <h4 id="modalTitle">Título</h4>
+        <button class="btnIcon" id="modalX" type="button" title="Cerrar" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18"/><path d="M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modalBody" id="modalBody"></div>
+      <div class="modalActions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <input id="fileImport" type="file" accept=".xlsx,.xls" style="display:none">
+
+<script>
+(() => {
+  "use strict";
+
+  const CONFIG = {
+    storageKey: "editor_etiquetas_api_v3_excel_simple",
+    previewScale: 0.58,
+    maxExcelBytes: 10 * 1024 * 1024,
+    maxExcelRows: 20000,
+    maxExcelErrorsShown: 120,
+    maxDigits: 7,
+    bigImportWarnQty: 500,
+
+    // ✅ Rendimiento/calidad (toca SOLO aquí)
+    render: {
+      // Preview: si tienes muchísimas etiquetas, baja este número
+      previewPngWidthPx: 900,
+
+      // PDF/Print: control de “calidad”
+      pdfQualityLevel: "low", // "low" | "medium" | "high"
+      pdfPngWidthPxByLevel: { low: 900, medium: 1300, high: 1800 },
+
+      // Si hay muchas etiquetas, baja automáticamente para que no se trabe
+      autoDownscaleOnLargeJobs: true,
+      autoDownscaleThresholds: [
+        { minLabels: 40, level: "low" },
+        { minLabels: 20, level: "medium" }
+      ],
+
+      // Concurrencia para render (reduce freeze)
+      previewConcurrency: 2,
+      exportConcurrency: 1,
+
+      // jsPDF addImage compression: "FAST" ayuda mucho a no trabarse
+      pdfCompression: "FAST"
+    }
+  };
+
+  const SIZE = { quarter:"quarter", halfH:"half_h", full:"full" };
+
+  // API
+  const API_URL = "https://script.google.com/macros/s/AKfycbyVhC5nrag5DgG65uVZ2vx8RXSBOmSDtpWPl3VxbxFbBnbCUS79TzXsqLHpVwg7aCuP/exec";
+  // ⚠️ Esto es público si está aquí. Si quieres seguridad real: proxy backend o Apps Script con controles.
+  const API_KEY_PUBLIC = "){=RIlLqu,18uC_v1+T#530tRWWAFc8E,36M~ce7";
+
+  const API_FIELD_MAP = {
+    id: ["id","codigo","sku","uid","productId","caracteristica_codigo","codigo_producto","cod"],
+    brand: ["caracteristica_marca","marca","brand","manufacturer"],
+    model: ["caracteristica_modelo","modelo","model"],
+    product: ["producto","nombre","name","descripcion","title"],
+
+    antes: ["caracteristica_precio_normal","precio_normal","precio_antes","antes","oldPrice"],
+    ahora: ["caracteristica_precio_efectivo","precio_efectivo","precio_ahora","ahora","price"],
+    cuota: ["caracteristica_cuota","cuota","cuota_semanal","weeklyPayment"],
+
+    screen: ["caracteristica_pantalla","pantalla","screen","display"],
+    battery: ["caracteristica_bateria","bateria","battery"],
+    camera: ["caracteristica_camara","camara","camera"],
+    capacity: ["caracteristica_capacidad","capacidad","storage","ram"],
+
+    discount: ["caracteristica_descuento","descuento","discount","porcentaje_descuento","caracteristica_porcentaje_descuento","pct_descuento"],
+    color: ["caracteristica_color","color","color_hex","hex","codigo_color","caracteristica_color_hex"],
+    cover: ["caracteristica_url_cover","caracteristica_cover","url_cover","cover","image","imagen"]
+  };
+
+  const SVG_IDS = {
+    coverCandidates: ["cover", "img_cover", "image_cover"],
+
+    nombreCandidates: ["nombre_producto","nombre","producto","titulo","title"],
+    marcaCandidates: ["marca","brand","caracteristica_marca"],
+    modeloCandidates: ["modelo","model","caracteristica_modelo"],
+
+    pantallaCandidates: ["pantalla","display","caracteristica_pantalla"],
+    bateriaCandidates: ["bateria","battery","caracteristica_bateria"],
+    camaraCandidates: ["camara","camera","caracteristica_camara"],
+    capacidadCandidates: ["capacidad","storage","caracteristica_capacidad"],
+
+    antesCandidates: ["precio_antes","antes","precio_normal","precio_regular","precio_lista"],
+    ahoraCandidates: ["precio_ahora","ahora","precio_efectivo","precio_final","precio_descuento"],
+    cuotaCandidates: ["cuota_semanal","cuota","cuota_semana"],
+
+    descuentoCandidates: ["descuento","porcentaje_descuento","pct_descuento","discount","descuento_texto"],
+    colorCandidates: ["color","color_producto","codigo_color","color_hex","hex","color_tag","color_label"],
+
+    vigenciaCandidates: ["fecha_vigencia","Fecha_vigencia","vigencia"],
+    impresionCandidates: ["Fecha_impresion","fecha_impresion","FECHA_IMPRESION"]
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function escapeHtml(s){
+    return (s ?? "").toString()
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  function normalizeText(s){
+    const t = (s ?? "").toString().trim().toLowerCase();
+    try { return t.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch { return t; }
+  }
+
+  function onlyDigits(str){ return (str ?? "").toString().replace(/[^\d]/g, ""); }
+  function sanitizeIntStr(raw){
+    let cleaned = onlyDigits(raw).slice(0, CONFIG.maxDigits);
+    if (cleaned.length > 1) cleaned = cleaned.replace(/^0+/, "") || "0";
+    return cleaned;
+  }
+  function formatThousands(num){ return Number(num).toLocaleString("en-US"); }
+  function toQuetzales(digits){
+    if (!digits) return "";
+    const n = parseInt(digits, 10);
+    if (!Number.isFinite(n)) return "";
+    return "Q " + formatThousands(n);
+  }
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function formatDateTimeNow(){
+    const dt = new Date();
+    return `${pad2(dt.getDate())}/${pad2(dt.getMonth()+1)}/${dt.getFullYear()} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  }
+  function formatDMY(iso){
+    if (!iso) return "";
+    const [y,m,d] = iso.split("-");
+    if (!y || !m || !d) return iso;
+    return `${d}/${m}/${y}`;
+  }
+  function uid(){ return "p_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16); }
+
+  function pickField(obj, keys){
+    for (const k of keys) {
+      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== null && obj[k] !== undefined && String(obj[k]).trim() !== "") {
+        return obj[k];
+      }
+    }
+    return "";
+  }
+
+  function normalizeDiscount(raw){
+    const s = (raw ?? "").toString().trim();
+    if (!s) return "";
+    const digits = s.replace(/[^\d]/g,"");
+    if (digits && digits.length <= 3 && (s === digits || /^\d+\s*%$/.test(s))) return digits + "%";
+    if (/^\d+\s*%$/.test(s)) return s.replace(/\s+/g,"");
+    return s;
+  }
+
+  function isColorCode(s){
+    const v = (s ?? "").toString().trim();
+    if (!v) return false;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return true;
+    if (/^rgb\(/i.test(v)) return true;
+    if (/^hsl\(/i.test(v)) return true;
+    return false;
+  }
+
+  function setPreviewLoading(isLoading, msg){
+    const overlay = $("previewLoading");
+    if (!overlay) return;
+    overlay.style.display = isLoading ? "flex" : "none";
+    overlay.setAttribute("aria-hidden", isLoading ? "false" : "true");
+    const t = $("previewLoadingText");
+    if (t && msg) t.textContent = msg;
+  }
+
+  function openModal({title, bodyHtml, actions}){
+    $("modalTitle").textContent = title || "Mensaje";
+    $("modalBody").innerHTML = bodyHtml || "";
+    const wrap = $("modalActions");
+    wrap.innerHTML = "";
+    (actions || []).forEach(a => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = a.className || "btnNeutral";
+      b.textContent = a.text || "OK";
+      b.addEventListener("click", () => a.onClick && a.onClick());
+      wrap.appendChild(b);
+    });
+    $("modalOverlay").style.display = "flex";
+    $("modalOverlay").setAttribute("aria-hidden","false");
+  }
+  function closeModal(){
+    $("modalOverlay").style.display = "none";
+    $("modalOverlay").setAttribute("aria-hidden","true");
+    $("modalBody").innerHTML = "";
+    $("modalActions").innerHTML = "";
+  }
+
+  function emptyProduct(){
+    return {
+      id:null,
+      apiId:"",
+      apiBrand:"",
+      apiModel:"",
+      apiScreen:"",
+      apiBattery:"",
+      apiCamera:"",
+      apiCapacity:"",
+      nombre:"",
+      antes:"",
+      ahora:"",
+      cuota:"",
+      descuento:"",
+      color:"",
+      coverUrl:"",
+      template:"",
+      size:"",
+      qty:1,
+      useVig:false,
+      vigStart:"",
+      vigEnd:"",
+      impresionAt:"",
+      colorIdx:0
+    };
+  }
+
+  const State = {
+    view:"list",
+    mode:"add",
+    editingId:null,
+    draft: emptyProduct(),
+    products: [],
+    expandedId: null,
+    selectedId: null,
+    apiAll: [],
+    apiFiltered: [],
+    apiLoaded: false,
+    apiLoading: false,
+    templateCache: new Map(),
+    renderCache: new Map(),
+    coverCache: new Map(),
+    previewSlotsByProduct: new Map(),
+    previewDraftSlots: [],
+
+    previewBuildSeq: 0,
+    previewBuildInFlight: false,
+    previewRebuildQueued: false,
+    previewRebuildOptions: {},
+    previewLastPromise: Promise.resolve()
+  };
+
+  function saveState(){
+    try{
+      localStorage.setItem(CONFIG.storageKey, JSON.stringify({
+        products: State.products,
+        expandedId: State.expandedId,
+        selectedId: State.selectedId
+      }));
+    }catch{}
+  }
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(CONFIG.storageKey);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.products)) State.products = data.products;
+      State.expandedId = typeof data.expandedId === "string" ? data.expandedId : null;
+      State.selectedId = typeof data.selectedId === "string" ? data.selectedId : null;
+    }catch{}
+  }
+
+  const HUES = [210,150,35,0,270,190,95,235,25,330];
+  function colorFromIdx(i){
+    const hue = HUES[i % HUES.length];
+    return `hsl(${hue} 82% 46%)`;
+  }
+  function glowFromIdx(i, strong=false){
+    const hue = HUES[i % HUES.length];
+    return `hsla(${hue} 85% 45% / ${strong?0.22:0.14})`;
+  }
+
+  function createColorAllocator(){
+    const used = new Set(State.products.map(p => p.colorIdx).filter(n => Number.isFinite(n)));
+    let idx = 0;
+    while(used.has(idx)) idx++;
+    return () => {
+      while(used.has(idx)) idx++;
+      used.add(idx);
+      return idx++;
+    };
+  }
+
+  function setBtnLoading(btn, loading){
+    if (!btn) return;
+    if (loading) {
+      if (!btn.dataset.orig) btn.dataset.orig = btn.innerHTML;
+      btn.innerHTML = `<span class="spin"></span>`;
+      btn.disabled = true;
+      return;
+    }
+    if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
+    btn.disabled = false;
+  }
+
+  function setFieldError(inputId, errorId, msg){
+    const input = $(inputId);
+    const err = $(errorId);
+    if (!err) return;
+    err.textContent = msg || "";
+    err.classList.toggle("show", !!msg);
+    if (input) input.classList.toggle("isInvalid", !!msg);
+  }
+  function clearAllErrors(){
+    setFieldError("fApiId","eApi","");
+    setFieldError("fTemplate","eTemplate","");
+    setFieldError("fSize","eSize","");
+    setFieldError("fQty","eQty","");
+    setFieldError("fVigStart","eVigStart","");
+    setFieldError("fVigEnd","eVigEnd","");
+  }
+
+  function updateTopButtons(){
+    const has = State.products.length > 0;
+    $("btnPrint").style.display = has ? "inline-flex" : "none";
+    $("btnPdf").style.display = has ? "inline-flex" : "none";
+    $("btnResetAll").style.display = has ? "inline-flex" : "none";
+  }
+
+  function requestPreviewRebuild(opts = {}){
+    State.previewRebuildQueued = true;
+    State.previewRebuildOptions = { ...State.previewRebuildOptions, ...opts };
+
+    if (State.previewBuildInFlight) return State.previewLastPromise;
+
+    State.previewBuildInFlight = true;
+    State.previewLastPromise = (async () => {
+      while (State.previewRebuildQueued) {
+        const options = State.previewRebuildOptions || {};
+        State.previewRebuildQueued = false;
+        State.previewRebuildOptions = {};
+
+        await safeBuildPreview();
+
+        if (State.selectedId) {
+          highlightProduct(State.selectedId, {
+            scroll: options.scrollToSelected
+          });
+        }
+
+        if (options.focusDraft && State.view === "form") {
+          focusDraftSlot({ scroll: true });
+        }
+      }
+    })().finally(() => {
+      State.previewBuildInFlight = false;
+      setPreviewLoading(false);
+    });
+
+    return State.previewLastPromise;
+  }
+
+  function setView(view){
+    State.view = view;
+    $("listView").style.display = view === "list" ? "flex" : "none";
+    $("formView").style.display = view === "form" ? "flex" : "none";
+    updateTopButtons();
+    renderList();
+    requestPreviewRebuild();
+    saveState();
+  }
+
+  function sizeLabel(size){
+    if (size === SIZE.quarter) return "1/4";
+    if (size === SIZE.halfH) return "Media horiz.";
+    return "Carta";
+  }
+
+  /* ============================
+     API
+  ============================ */
+  function normalizeApiItem(raw, index){
+    const id = String(pickField(raw, API_FIELD_MAP.id) || ("api_" + index));
+    const brand = String(pickField(raw, API_FIELD_MAP.brand) || "").trim();
+    const model = String(pickField(raw, API_FIELD_MAP.model) || "").trim();
+    const product = String(pickField(raw, API_FIELD_MAP.product) || "").trim();
+
+    const antes = sanitizeIntStr(pickField(raw, API_FIELD_MAP.antes));
+    const ahora = sanitizeIntStr(pickField(raw, API_FIELD_MAP.ahora));
+    const cuota = sanitizeIntStr(pickField(raw, API_FIELD_MAP.cuota));
+
+    const screen = String(pickField(raw, API_FIELD_MAP.screen) || "").trim();
+    const battery = String(pickField(raw, API_FIELD_MAP.battery) || "").trim();
+    const camera = String(pickField(raw, API_FIELD_MAP.camera) || "").trim();
+    const capacity = String(pickField(raw, API_FIELD_MAP.capacity) || "").trim();
+
+    const descuento = normalizeDiscount(pickField(raw, API_FIELD_MAP.discount));
+    const color = String(pickField(raw, API_FIELD_MAP.color) || "").trim();
+    const coverUrl = String(pickField(raw, API_FIELD_MAP.cover) || "").trim();
+
+    const label = `${(brand?brand+" · ":"")}${(model?model:"")}${(product?" — "+product:"")} [${id}]`;
+    const nombre = (product || model || brand || id).trim();
+
+    return { id, brand, model, product, nombre, antes, ahora, cuota, screen, battery, camera, capacity, descuento, color, coverUrl, label, raw };
+  }
+
+  async function fetchApi(){
+    if (State.apiLoading) return false;
+    State.apiLoading = true;
+    $("apiStatus").textContent = "cargando…";
+
+    try{
+      const res = await fetch(API_URL, {
+        method:"POST",
+        headers: { "Content-Type":"application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ api_key: API_KEY_PUBLIC })
+      });
+
+      const txt = await res.text();
+      let data = null;
+      try { data = JSON.parse(txt); } catch { data = null; }
+      if (!data) throw new Error("Respuesta API no JSON");
+
+      const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      State.apiAll = arr.map((x,i)=>normalizeApiItem(x,i));
+      State.apiLoaded = true;
+
+      buildBrandFilter();
+      applyApiFilters();
+
+      $("apiStatus").textContent = `ok (${State.apiAll.length})`;
+      return true;
+    }catch(e){
+      console.error(e);
+      State.apiAll = [];
+      State.apiFiltered = [];
+      State.apiLoaded = false;
+      $("apiStatus").textContent = "error";
+      $("apiList").innerHTML = `<div class="apiEmpty">Error cargando API. Revisa URL / api_key / CORS.</div>`;
+      return false;
+    }finally{
+      State.apiLoading = false;
+    }
+  }
+
+  async function ensureApiLoaded(force=false){
+    if (force || !State.apiLoaded) return await fetchApi();
+    return true;
+  }
+
+  function buildBrandFilter(){
+    const sel = $("apiBrand");
+    const current = sel.value || "";
+    const brands = Array.from(new Set(State.apiAll.map(x => (x.brand||"").trim()).filter(Boolean)))
+      .sort((a,b)=>a.localeCompare(b,"es",{sensitivity:"base"}));
+    sel.innerHTML = `<option value="">Todas las marcas</option>` + brands.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("");
+    sel.value = current;
+  }
+
+  function applyApiFilters(){
+    const q = normalizeText($("apiSearch").value || "");
+    const b = ($("apiBrand").value || "").trim();
+    State.apiFiltered = State.apiAll.filter(x => {
+      if (b && x.brand !== b) return false;
+      if (!q) return true;
+      const hay = normalizeText(`${x.brand} ${x.model} ${x.product} ${x.id}`);
+      return hay.includes(q);
+    });
+    renderApiList();
+  }
+
+  function renderApiList(){
+    const wrap = $("apiList");
+    const selectedId = $("fApiId").value || "";
+
+    if (!State.apiLoaded){
+      wrap.innerHTML = `<div class="apiEmpty">API no disponible.</div>`;
+      return;
+    }
+
+    if (!State.apiFiltered.length){
+      wrap.innerHTML = `<div class="apiEmpty">No hay coincidencias. Cambia filtros o busca distinto.</div>`;
+      return;
+    }
+
+    const max = Math.min(State.apiFiltered.length, 250);
+    wrap.innerHTML = State.apiFiltered.slice(0,max).map(x => {
+      const isSel = selectedId && x.id === selectedId;
+      const title = `${(x.brand?x.brand+" · ":"")}${(x.model||"")}${(x.product ? " — "+x.product : "")}`;
+      return `
+        <div class="apiRow ${isSel ? "selected" : ""}" tabindex="0" data-api-id="${escapeHtml(x.id)}">
+          <div class="apiRowTop">
+            <div class="apiRowTitle">${escapeHtml(title || x.id)}</div>
+            <div class="apiRowId">#${escapeHtml(x.id)}</div>
+          </div>
+          <div class="apiRowMeta">
+            <div><b>Antes:</b> ${escapeHtml(toQuetzales(x.antes) || "—")} · <b>Ahora:</b> ${escapeHtml(toQuetzales(x.ahora) || "—")}</div>
+            <div><b>Cuota:</b> ${escapeHtml(toQuetzales(x.cuota) || "—")} · <b>Desc:</b> ${escapeHtml(x.descuento || "—")} · <b>Color:</b> ${escapeHtml(x.color || "—")}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function getSelectedApiItem(){
+    const id = $("fApiId").value || "";
+    if (!id) return null;
+    return State.apiAll.find(x => x.id === id) || null;
+  }
+
+  function syncDraftFromSelectedApi(){
+    const item = getSelectedApiItem();
+    if (!item) return false;
+
+    State.draft.apiId = item.id;
+    State.draft.apiBrand = item.brand || "";
+    State.draft.apiModel = item.model || "";
+    State.draft.apiScreen = item.screen || "";
+    State.draft.apiBattery = item.battery || "";
+    State.draft.apiCamera = item.camera || "";
+    State.draft.apiCapacity = item.capacity || "";
+
+    State.draft.nombre = item.nombre || item.label;
+
+    State.draft.antes = item.antes || "";
+    State.draft.ahora = item.ahora || "";
+    State.draft.cuota = item.cuota || "";
+
+    State.draft.descuento = item.descuento || "";
+    State.draft.color = item.color || "";
+    State.draft.coverUrl = item.coverUrl || "";
+
+    $("apiPicked").style.display = "block";
+    $("apiPicked").innerHTML = `<span class="pill">Seleccionado</span> ${escapeHtml(item.label)}`;
+    return true;
+  }
+
+  function buildApiIndexes(apiItems){
+    const byId = new Map(apiItems.map(x => [String(x.id), x]));
+
+    const makeKey = (brand, model, product) => {
+      const b = normalizeText(brand);
+      const m = normalizeText(model);
+      const p = normalizeText(product);
+      return `${b}|${m}|${p}`;
+    };
+
+    const byComposite = new Map();
+    apiItems.forEach(x => {
+      const key = makeKey(x.brand, x.model, x.product || x.nombre || "");
+      if (!byComposite.has(key)) byComposite.set(key, x);
+    });
+
+    const byBrandModel = new Map();
+    apiItems.forEach(x => {
+      const key = `${normalizeText(x.brand)}|${normalizeText(x.model)}`;
+      if (!byBrandModel.has(key)) byBrandModel.set(key, x);
+    });
+
+    return { byId, byComposite, byBrandModel, makeKey };
+  }
+
+  function applyApiItemToProduct(targetProduct, apiItem){
+    return {
+      ...targetProduct,
+      apiId: apiItem.id,
+      apiBrand: apiItem.brand || "",
+      apiModel: apiItem.model || "",
+      apiScreen: apiItem.screen || "",
+      apiBattery: apiItem.battery || "",
+      apiCamera: apiItem.camera || "",
+      apiCapacity: apiItem.capacity || "",
+      nombre: (apiItem.nombre || apiItem.label || "").trim(),
+      antes: apiItem.antes || "",
+      ahora: apiItem.ahora || "",
+      cuota: apiItem.cuota || "",
+      descuento: apiItem.descuento || "",
+      color: apiItem.color || "",
+      coverUrl: apiItem.coverUrl || ""
+    };
+  }
+
+  async function reloadApiAndSyncProducts(){
+    setBtnLoading($("btnReloadApi"), true);
+
+    try{
+      const ok = await ensureApiLoaded(true);
+      if (!ok || !State.apiAll.length) {
+        openModal({
+          title:"No se pudo recargar",
+          bodyHtml:`<div class="modalText">El API no devolvió datos.</div>`,
+          actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+        });
+        return;
+      }
+
+      const idx = buildApiIndexes(State.apiAll);
+
+      let removed = 0;
+      let updated = 0;
+      let relinked = 0;
+
+      const next = [];
+      for (const p of State.products){
+        const currentId = String(p.apiId || "");
+        const fromId = currentId ? idx.byId.get(currentId) : null;
+
+        if (fromId) {
+          const merged = applyApiItemToProduct(p, fromId);
+          if (JSON.stringify(merged) !== JSON.stringify(p)) updated++;
+          next.push(merged);
+          continue;
+        }
+
+        // Si no existe el ID: intentar re-vincular por marca/modelo/producto
+        const compositeKey = idx.makeKey(p.apiBrand, p.apiModel, p.nombre || "");
+        const fromComposite = idx.byComposite.get(compositeKey);
+
+        const brandModelKey = `${normalizeText(p.apiBrand)}|${normalizeText(p.apiModel)}`;
+        const fromBrandModel = idx.byBrandModel.get(brandModelKey);
+
+        const candidate = fromComposite || fromBrandModel;
+
+        if (candidate) {
+          const merged = applyApiItemToProduct(p, candidate);
+          relinked++;
+          next.push(merged);
+          continue;
+        }
+
+        removed++;
+      }
+
+      State.products = next;
+
+      if (State.selectedId && !State.products.some(x => x.id === State.selectedId)) {
+        State.selectedId = null;
+        State.expandedId = null;
+      }
+
+      State.renderCache.clear();
+      saveState();
+      updateTopButtons();
+      renderList();
+
+      await requestPreviewRebuild({ scrollToSelected: true, focusDraft: true });
+
+      if (State.view === "form") validateDraft();
+
+      openModal({
+        title:"Sincronización completa",
+        bodyHtml: `
+          <div class="modalText">
+            <div><b>Actualizados:</b> ${updated}</div>
+            <div><b>Re-vinculados (ID cambió):</b> ${relinked}</div>
+            <div><b>Eliminados (ya no existen):</b> ${removed}</div>
+          </div>
+        `,
+        actions:[{text:"OK", className:"btnSuccess", onClick: closeModal}]
+      });
+    }catch(e){
+      console.error(e);
+      openModal({
+        title:"Error",
+        bodyHtml:`<div class="modalText">Falló la sincronización. Revisa consola.</div>`,
+        actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+      });
+    }finally{
+      setBtnLoading($("btnReloadApi"), false);
+    }
+  }
+
+  /* ============================
+     LISTA
+  ============================ */
+  function renderList(){
+    const wrap = $("itemsWrap");
+
+    if (!State.products.length){
+      wrap.innerHTML = `<div class="listEmpty">
+        No hay productos guardados.<br>
+        Presiona <b>Agregar</b> o usa <b>Importar Excel</b>.
+      </div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="items" id="itemsList">
+        ${State.products.map(p => {
+          const isOpen = State.expandedId === p.id;
+          const isSel = State.selectedId === p.id;
+
+          const c = colorFromIdx(p.colorIdx || 0);
+          const g = glowFromIdx(p.colorIdx || 0, false);
+          const gs = glowFromIdx(p.colorIdx || 0, true);
+
+          const vigLabel = p.useVig ? `Vigencia: ${formatDMY(p.vigStart)} → ${formatDMY(p.vigEnd)}` : "Sin vigencia";
+          const desc = p.descuento ? p.descuento : "—";
+          const col = p.color ? p.color : "—";
+
+          return `
+          <div class="item ${isOpen ? "expanded" : ""} ${isSel ? "selected":""}"
+               data-id="${escapeHtml(p.id)}"
+               style="--pairColor:${c}; --pairGlow:${g}; --pairGlowStrong:${gs}"
+               tabindex="0">
+            <div class="itemHead">
+              <div class="itemTitleRow">
+                <div class="pairDot"></div>
+                <div class="itemName" title="${escapeHtml(p.nombre || "(Sin nombre)")}">${escapeHtml(p.nombre || "(Sin nombre)")}</div>
+              </div>
+              <div class="itemActions">
+                <button class="btnIcon primary" type="button" data-action="toggle" title="${isOpen?"Plegar":"Desplegar"}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    ${isOpen ? `<path d="M6 9l6 6 6-6"/>` : `<path d="M9 18l6-6-6-6"/>`}
+                  </svg>
+                </button>
+                <button class="btnIcon primary" type="button" data-action="edit" title="Editar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                  </svg>
+                </button>
+                <button class="btnIcon danger" type="button" data-action="delete" title="Eliminar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="itemDetails">
+              <div class="metaGrid">
+                <div><b>Plantilla:</b> ${escapeHtml(p.template)}</div>
+                <div><b>Tamaño:</b> ${escapeHtml(sizeLabel(p.size))}</div>
+                <div><b>Cantidad:</b> ${p.qty}</div>
+                <div><b>Antes:</b> ${escapeHtml(toQuetzales(p.antes))}</div>
+                <div><b>Ahora:</b> ${escapeHtml(toQuetzales(p.ahora))}</div>
+                <div><b>Cuota:</b> ${escapeHtml(toQuetzales(p.cuota))}</div>
+                <div><b>Descuento:</b> ${escapeHtml(desc)}</div>
+                <div><b>Color:</b> ${escapeHtml(col)}</div>
+                <div class="span2"><b>${escapeHtml(vigLabel)}</b></div>
+              </div>
+              <div class="metaPill">Click en el preview para seleccionarlo</div>
+            </div>
+          </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function selectProduct(pid, {scrollPreview=false} = {}){
+  State.selectedId = pid;
+
+  // 🔁 Toggle real
+  State.expandedId = (State.expandedId === pid) ? null : pid;
+
+  renderList();
+  requestPreviewRebuild({ scrollToSelected: scrollPreview });
+  saveState();
+}
+
+
+  /* ============================
+     FORM
+  ============================ */
+  function setFormMode(mode){
+    State.mode = mode;
+    $("formTitle").textContent = mode === "edit" ? "Editar producto" : "Agregar producto";
+    $("formSubtitle").textContent = "Busca y selecciona un dispositivo, luego plantilla/tamaño/cantidad.";
+  }
+
+  function fillFormFromDraft(){
+    $("fApiId").value = State.draft.apiId || "";
+    $("fTemplate").value = State.draft.template || "";
+    $("fSize").value = State.draft.size || "";
+    $("fQty").value = String(State.draft.qty || 1);
+
+    $("fUseVig").checked = !!State.draft.useVig;
+    $("vigDates").style.display = State.draft.useVig ? "block" : "none";
+    $("fVigStart").value = State.draft.vigStart || "";
+    $("fVigEnd").value = State.draft.vigEnd || "";
+
+    renderApiList();
+    if (State.draft.apiId) $("apiPicked").style.display = "block";
+  }
+
+  function syncDraftFromForm(){
+    State.draft.template = $("fTemplate").value || "";
+    State.draft.size = $("fSize").value || "";
+    const q = parseInt($("fQty").value, 10);
+    State.draft.qty = Number.isFinite(q) && q > 0 ? q : 0;
+
+    State.draft.useVig = !!$("fUseVig").checked;
+    $("vigDates").style.display = State.draft.useVig ? "block" : "none";
+    State.draft.vigStart = $("fVigStart").value || "";
+    State.draft.vigEnd = $("fVigEnd").value || "";
+  }
+
+  function validateDraft(){
+    clearAllErrors();
+    syncDraftFromForm();
+
+    let ok = true;
+
+    if (!$("fApiId").value) {
+      setFieldError("fApiId","eApi","Debes seleccionar un dispositivo del listado.");
+      ok = false;
+    } else {
+      const item = getSelectedApiItem();
+      if (!item) {
+        setFieldError("fApiId","eApi","El ApiId seleccionado no existe en el API (recarga).");
+        ok = false;
+      } else {
+        syncDraftFromSelectedApi();
+      }
+    }
+
+    if (!State.draft.template) { setFieldError("fTemplate","eTemplate","Selecciona una plantilla."); ok=false; }
+    if (!State.draft.size) { setFieldError("fSize","eSize","Selecciona un tamaño."); ok=false; }
+    if (!State.draft.qty || State.draft.qty < 1) { setFieldError("fQty","eQty","Cantidad debe ser mayor a 0."); ok=false; }
+
+    if (State.draft.useVig) {
+      if (!State.draft.vigStart) { setFieldError("fVigStart","eVigStart","Selecciona fecha inicial."); ok=false; }
+      if (!State.draft.vigEnd) { setFieldError("fVigEnd","eVigEnd","Selecciona fecha final."); ok=false; }
+      if (State.draft.vigStart && State.draft.vigEnd && State.draft.vigEnd < State.draft.vigStart) {
+        setFieldError("fVigEnd","eVigEnd","La fecha final no puede ser menor que la inicial."); ok=false;
+      }
+    }
+
+    $("btnSave").disabled = !ok;
+    return ok;
+  }
+
+  function startAdd(){
+    State.mode = "add";
+    State.editingId = null;
+    State.draft = emptyProduct();
+    State.draft.impresionAt = formatDateTimeNow();
+
+    setFormMode("add");
+    fillFormFromDraft();
+    validateDraft();
+    setView("form");
+    if (!State.apiLoaded) fetchApi();
+
+    requestPreviewRebuild({ focusDraft: true });
+  }
+
+  function startEdit(pid){
+    const p = State.products.find(x => x.id === pid);
+    if (!p) return;
+
+    // ✅ queda “seleccionado” desde el inicio
+    State.selectedId = pid;
+    State.expandedId = pid;
+
+    State.mode = "edit";
+    State.editingId = pid;
+    State.draft = JSON.parse(JSON.stringify(p));
+    State.draft.impresionAt = formatDateTimeNow();
+
+    setFormMode("edit");
+    fillFormFromDraft();
+    validateDraft();
+    setView("form");
+    if (!State.apiLoaded) fetchApi();
+
+    // ✅ foco directo al draft (visible por defecto)
+    requestPreviewRebuild({ focusDraft: true });
+  }
+
+  function saveDraft(){
+    if (!validateDraft()) return;
+
+    State.draft.impresionAt = formatDateTimeNow();
+
+    if (State.mode === "edit") {
+      const idx = State.products.findIndex(p => p.id === State.editingId);
+      if (idx < 0) return;
+      const colorIdx = State.products[idx].colorIdx || 0;
+      State.products[idx] = { ...State.draft, id: State.editingId, colorIdx };
+      State.selectedId = State.editingId;
+      State.expandedId = State.editingId;
+    } else {
+      const newP = { ...State.draft };
+      newP.id = uid();
+      const alloc = createColorAllocator();
+      newP.colorIdx = alloc();
+      State.products.unshift(newP);
+      State.selectedId = newP.id;
+      State.expandedId = newP.id;
+    }
+
+    State.renderCache.clear();
+    saveState();
+    setView("list");
+    requestPreviewRebuild({ scrollToSelected: true });
+  }
+
+  function deleteProduct(pid){
+    const p = State.products.find(x => x.id === pid);
+    if (!p) return;
+
+    openModal({
+      title:"Eliminar producto",
+      bodyHtml:`<div class="modalText">¿Seguro que deseas eliminar <b>${escapeHtml(p.nombre || "(sin nombre)")}</b>?</div>`,
+      actions:[
+        {text:"Cancelar", className:"btnNeutral", onClick: closeModal},
+        {text:"Eliminar", className:"btnNeutral", onClick: () => {
+          closeModal();
+          State.products = State.products.filter(x => x.id !== pid);
+          if (State.selectedId === pid) State.selectedId = null;
+          if (State.expandedId === pid) State.expandedId = null;
+          saveState();
+          updateTopButtons();
+          renderList();
+          requestPreviewRebuild();
+        }}
+      ]
+    });
+  }
+
+  /* ============================
+     SVG SANITIZE
+  ============================ */
+  function sanitizeSvgText(svgText){
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, "image/svg+xml");
+    const svg = doc.querySelector("svg");
+    if (!svg) return "";
+
+    ["script","foreignObject","iframe","object","embed"].forEach(tag => doc.querySelectorAll(tag).forEach(n => n.remove()));
+
+    doc.querySelectorAll("*").forEach((el) => {
+      Array.from(el.attributes || []).forEach(attr => {
+        const name = (attr.name || "").toLowerCase();
+        const value = (attr.value || "").toString().trim().toLowerCase();
+
+        if (name.startsWith("on")) el.removeAttribute(attr.name);
+
+        const isHref = (name === "href" || name.endsWith(":href"));
+        if (isHref && (value.startsWith("javascript:") || value.startsWith("data:text/html"))) el.removeAttribute(attr.name);
+
+        if (name === "style" && value.includes("url(") && (value.includes("http") || value.includes("javascript"))) el.removeAttribute(attr.name);
+      });
+    });
+
+    return new XMLSerializer().serializeToString(svg);
+  }
+
+  function assertSafeTemplatePath(file){
+    const f = (file ?? "").toString().trim();
+    if (!f) return "";
+    if (/^[a-z]+:\/\//i.test(f)) return "";
+    if (/^data:/i.test(f)) return "";
+    return f;
+  }
+
+  async function loadTemplateText(file){
+    const safe = assertSafeTemplatePath(file);
+    if (!safe) throw new Error("Plantilla inválida.");
+
+    if (State.templateCache.has(safe)) return State.templateCache.get(safe);
+
+    const res = await fetch(safe, { cache:"no-store" });
+    if (!res.ok) throw new Error("No se pudo cargar " + safe + ". Debe estar junto al HTML.");
+    const txt = await res.text();
+    const clean = sanitizeSvgText(txt);
+    if (!clean) throw new Error("SVG inválido o bloqueado.");
+    State.templateCache.set(safe, clean);
+    return clean;
+  }
+
+  function cssEsc(s){
+    try { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/[^a-zA-Z0-9_\-]/g, "\\$&"); }
+    catch { return String(s); }
+  }
+
+  function buildIdIndex(svg){
+    const index = Object.create(null);
+    svg.querySelectorAll("[id]").forEach(el => {
+      const id = el.id;
+      if (!id) return;
+      if (!index[id]) index[id] = [];
+      index[id].push(el);
+    });
+    return index;
+  }
+
+  function findAllByAnyId(svg, ids, idx){
+    const out = [];
+    for (const id of ids) {
+      if (idx && Array.isArray(idx[id]) && idx[id].length) out.push(...idx[id]);
+      else svg.querySelectorAll("#"+cssEsc(id)).forEach(el => out.push(el));
+    }
+    return Array.from(new Set(out));
+  }
+
+  function clearSvgText(el){
+    if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.textContent = "";
+  }
+
+  function setSvgText(el, txt){
+    if (!el) return;
+    const t = (txt ?? "").toString();
+    const tspans = el.querySelectorAll(":scope > tspan");
+    if (tspans.length) {
+      tspans[0].textContent = t;
+      for (let i = 1; i < tspans.length; i++) tspans[i].remove();
+      return;
+    }
+    el.textContent = t;
+  }
+
+  function setSvgTextAll(els, txt){ els.forEach(el => setSvgText(el, txt)); }
+  function clearSvgTextAll(els){ els.forEach(el => clearSvgText(el)); }
+
+  function replaceTokenInSvg(svg, token, value){
+    svg.querySelectorAll("tspan").forEach(ts => {
+      if (ts.textContent && ts.textContent.includes(token)) ts.textContent = ts.textContent.split(token).join(value);
+    });
+    svg.querySelectorAll("text").forEach(t => {
+      if (t.querySelector("tspan")) return;
+      if (t.textContent && t.textContent.includes(token)) t.textContent = t.textContent.split(token).join(value);
+    });
+  }
+
+  function getSvgViewBox(svg){
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    if (vb && vb.width && vb.height) return { w: vb.width, h: vb.height };
+    const w = parseFloat(svg.getAttribute("width") || "0") || 1000;
+    const h = parseFloat(svg.getAttribute("height") || "0") || 1000;
+    return { w, h };
+  }
+
+  const COVER_PRESERVE_ASPECT = "xMidYMid slice"; // o "xMidYMid meet"
+
+function setSvgImageHref(imageEl, href){
+  if (!imageEl) return;
+
+  imageEl.setAttribute("href", href);
+  imageEl.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", href);
+
+  // Evita deformación
+  const current = (imageEl.getAttribute("preserveAspectRatio") || "").toLowerCase();
+  if (!current || current === "none") {
+    imageEl.setAttribute("preserveAspectRatio", COVER_PRESERVE_ASPECT);
+  }
+}
+
+
+  async function fetchCoverAsDataUrl(url){
+    const u = (url || "").trim();
+    if (!u) return "";
+    if (State.coverCache.has(u)) return State.coverCache.get(u);
+
+    const res = await fetch(u, { mode:"cors", cache:"no-store" });
+    if (!res.ok) throw new Error("No se pudo descargar cover");
+
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    const isSvg = ct.includes("image/svg") || u.toLowerCase().endsWith(".svg");
+
+    let dataUrl = "";
+    if (isSvg) {
+      const txt = await res.text();
+      const clean = sanitizeSvgText(txt);
+      const b64 = btoa(unescape(encodeURIComponent(clean)));
+      dataUrl = `data:image/svg+xml;base64,${b64}`;
+    } else {
+      const blob = await res.blob();
+      dataUrl = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(blob);
+      });
+    }
+
+    State.coverCache.set(u, dataUrl);
+    return dataUrl;
+  }
+
+  async function svgNodeToPng(svgNode, targetWidthPx){
+    const serializer = new XMLSerializer();
+    let svgText = serializer.serializeToString(svgNode);
+
+    if (!svgText.includes('xmlns="http://www.w3.org/2000/svg"')) svgText = svgText.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+    if (!svgText.includes('xmlns:xlink="http://www.w3.org/1999/xlink"')) svgText = svgText.replace("<svg", '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+
+    const vb = getSvgViewBox(svgNode);
+    const scale = targetWidthPx / vb.w;
+    const cw = Math.round(vb.w * scale);
+    const ch = Math.round(vb.h * scale);
+
+    const blob = new Blob([svgText], { type:"image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+
+    const canvas = $("workCanvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,cw,ch);
+    ctx.drawImage(img, 0,0,cw,ch);
+
+    URL.revokeObjectURL(url);
+    return canvas.toDataURL("image/png");
+  }
+
+  async function rotatePng90(pngDataUrl){
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = pngDataUrl;
+    });
+
+    const canvas = $("workCanvas");
+    canvas.width = img.height;
+    canvas.height = img.width;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.translate(canvas.width, 0);
+    ctx.rotate(Math.PI/2);
+    ctx.drawImage(img, 0,0);
+
+    return canvas.toDataURL("image/png");
+  }
+
+  function renderKey(p, targetWidthPx){
+    return JSON.stringify({
+      targetWidthPx,
+      template:p.template,
+      nombre:(p.nombre||"").trim().toUpperCase(),
+      brand:(p.apiBrand||"").trim().toUpperCase(),
+      model:(p.apiModel||"").trim().toUpperCase(),
+      screen:(p.apiScreen||"").trim(),
+      battery:(p.apiBattery||"").trim(),
+      camera:(p.apiCamera||"").trim(),
+      capacity:(p.apiCapacity||"").trim(),
+      antes:p.antes, ahora:p.ahora, cuota:p.cuota,
+      descuento:(p.descuento||"").trim(),
+      color:(p.color||"").trim(),
+      useVig:!!p.useVig, vigStart:p.vigStart||"", vigEnd:p.vigEnd||"",
+      impresionAt:(p.impresionAt||"").trim(),
+      coverUrl:(p.coverUrl||"").trim()
+    });
+  }
+
+  function applyColorToElement(el, colorValue){
+    if (!el || !colorValue) return;
+    const v = colorValue.toString().trim();
+    const tag = (el.tagName || "").toLowerCase();
+
+    if (tag === "text" || tag === "tspan") {
+      setSvgText(el, v);
+      return;
+    }
+    if (isColorCode(v)) {
+      el.setAttribute("fill", v);
+      el.setAttribute("stroke", v);
+      return;
+    }
+    el.setAttribute("data-color", v);
+  }
+  function applyColorToAll(els, v){ els.forEach(el => applyColorToElement(el, v)); }
+
+  async function renderProductToPngs(p, targetWidthPx){
+    const key = renderKey(p, targetWidthPx);
+    if (State.renderCache.has(key)) return State.renderCache.get(key);
+
+    const svgText = await loadTemplateText(p.template);
+    const host = $("__svgHostHidden");
+    host.innerHTML = svgText;
+
+    const svg = host.querySelector("svg");
+    if (!svg) throw new Error("SVG inválido: " + p.template);
+
+    const idx = buildIdIndex(svg);
+
+    const coverEls = findAllByAnyId(svg, SVG_IDS.coverCandidates, idx);
+    if (coverEls.length && p.coverUrl) {
+      try {
+        const dataUrl = await fetchCoverAsDataUrl(p.coverUrl);
+        if (dataUrl) coverEls.forEach(el => setSvgImageHref(el, dataUrl));
+      } catch (e) {
+        console.warn("Cover no cargado:", e);
+      }
+    }
+
+    const nameTxt  = (p.nombre||"").trim().toUpperCase();
+    const brandTxt = (p.apiBrand||"").trim().toUpperCase();
+    const modelTxt = (p.apiModel||"").trim().toUpperCase();
+
+    const screenTxt = (p.apiScreen||"").trim();
+    const batteryTxt = (p.apiBattery||"").trim();
+    const cameraTxt = (p.apiCamera||"").trim();
+    const capacityTxt = (p.apiCapacity||"").trim();
+
+    const antesTxt = toQuetzales(p.antes);
+    const ahoraTxt = toQuetzales(p.ahora);
+    const cuotaTxt = toQuetzales(p.cuota);
+
+    const descTxt = (p.descuento || "").trim();
+    const colorTxt = (p.color || "").trim();
+
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.nombreCandidates, idx), nameTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.marcaCandidates, idx), brandTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.modeloCandidates, idx), modelTxt);
+
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.pantallaCandidates, idx), screenTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.bateriaCandidates, idx), batteryTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.camaraCandidates, idx), cameraTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.capacidadCandidates, idx), capacityTxt);
+
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.antesCandidates, idx), antesTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.ahoraCandidates, idx), ahoraTxt);
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.cuotaCandidates, idx), cuotaTxt);
+
+    setSvgTextAll(findAllByAnyId(svg, SVG_IDS.descuentoCandidates, idx), descTxt);
+    applyColorToAll(findAllByAnyId(svg, SVG_IDS.colorCandidates, idx), colorTxt);
+
+    replaceTokenInSvg(svg, "[descuento]", descTxt);
+    replaceTokenInSvg(svg, "[color]", colorTxt);
+
+    replaceTokenInSvg(svg, "[pantalla]", screenTxt);
+    replaceTokenInSvg(svg, "[bateria]", batteryTxt);
+    replaceTokenInSvg(svg, "[camara]", cameraTxt);
+    replaceTokenInSvg(svg, "[capacidad]", capacityTxt);
+    replaceTokenInSvg(svg, "[marca]", brandTxt);
+    replaceTokenInSvg(svg, "[modelo]", modelTxt);
+
+    const vigEls = findAllByAnyId(svg, SVG_IDS.vigenciaCandidates, idx);
+    if (p.useVig && p.vigStart && p.vigEnd) {
+      const txt = `* VÁLIDO DESDE ${formatDMY(p.vigStart)} AL ${formatDMY(p.vigEnd)}`;
+      setSvgTextAll(vigEls, txt);
+      replaceTokenInSvg(svg, "[Fecha_vigencia]", txt);
+    } else {
+      clearSvgTextAll(vigEls);
+      replaceTokenInSvg(svg, "[Fecha_vigencia]", "");
+    }
+
+    const impTxt = (p.impresionAt && p.impresionAt.trim()) ? p.impresionAt.trim() : formatDateTimeNow();
+    const impEls = findAllByAnyId(svg, SVG_IDS.impresionCandidates, idx);
+    setSvgTextAll(impEls, impTxt);
+    replaceTokenInSvg(svg, "[Fecha_impresion]", impTxt);
+
+    const pngNormal = await svgNodeToPng(svg, targetWidthPx);
+    const pngRotated = await rotatePng90(pngNormal);
+
+    const out = { pngNormal, pngRotated };
+    State.renderCache.set(key, out);
+    return out;
+  }
+
+  /* ============================
+     Concurrencia controlada
+  ============================ */
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  async function runWithConcurrency(list, concurrency, handler){
+    const items = Array.from(list);
+    const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
+      while (items.length) {
+        const it = items.shift();
+        await handler(it);
+        await sleep(0);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  /* ============================
+     PACKING + PREVIEW
+  ============================ */
+  function makeGridPage(){ return { type:"grid", occ:[[null,null],[null,null]], placements:[] }; }
+  function rowEmpty(page, r){ return !page.occ[r][0] && !page.occ[r][1]; }
+
+  function placeQuarter(page, item){
+    for (let r=0;r<2;r++){
+      for (let c=0;c<2;c++){
+        if (!page.occ[r][c]) {
+          page.occ[r][c] = item;
+          page.placements.push({ item, row:r+1, col:c+1, rs:1, cs:1 });
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function placeHalf(page, item){
+    for (let r=0;r<2;r++){
+      if (rowEmpty(page, r)) {
+        page.occ[r][0] = item;
+        page.occ[r][1] = item;
+        page.placements.push({ item, row:r+1, col:1, rs:1, cs:2 });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function packAll(items){
+    const pages = [];
+    for (const it of items){
+      const size = it.product.size;
+      if (size === SIZE.full) {
+        pages.push({ type:"full", placements:[{ item:it, row:1, col:1, rs:1, cs:1 }] });
+        continue;
+      }
+
+      let placed = false;
+      for (const pg of pages){
+        if (pg.type !== "grid") continue;
+        if (size === SIZE.quarter) placed = placeQuarter(pg, it);
+        else if (size === SIZE.halfH) placed = placeHalf(pg, it);
+        if (placed) break;
+      }
+
+      if (!placed){
+        const pg = makeGridPage();
+        pages.push(pg);
+        if (size === SIZE.quarter) placeQuarter(pg, it);
+        else placeHalf(pg, it);
+      }
+    }
+    return pages;
+  }
+
+  function buildItemsForPacking(includeDraft){
+    const items = [];
+    for (const p of State.products){
+      for (let i=0;i<(p.qty||0);i++){
+        items.push({ product:p, isDraft:false });
+      }
+    }
+
+    if (!includeDraft || State.view !== "form") return items;
+
+    const d = State.draft;
+    if (d.template && d.size && d.qty && d.apiId) {
+      for (let i=0;i<(d.qty||1);i++){
+        items.push({ product:{...d, id:"__draft__"}, isDraft:true });
+      }
+    }
+    return items;
+  }
+
+  function showEmptyPreview(title, text){
+    $("paperPreview").innerHTML = `
+      <div class="emptyPreview">
+        <h4>${escapeHtml(title)}</h4>
+        <p>${escapeHtml(text)}</p>
+      </div>
+    `;
+  }
+
+  function clearHighlight(){
+    document.querySelectorAll(".slot.hl").forEach(el => {
+      el.classList.remove("hl");
+      const tag = el.querySelector(".hlTag");
+      if (tag) tag.remove();
+    });
+    document.querySelectorAll(".page-shell.hlpage").forEach(el => {
+      el.classList.remove("hlpage");
+      el.style.removeProperty("--pairColor");
+      el.style.removeProperty("--pairGlowStrong");
+    });
+  }
+
+  function highlightProduct(pid, {scroll=false} = {}){
+    if (!pid) return;
+    clearHighlight();
+
+    const slots = State.previewSlotsByProduct.get(pid) || [];
+    if (!slots.length) return;
+
+    const p = State.products.find(x=>x.id===pid);
+    const c = colorFromIdx(p?.colorIdx || 0);
+    const g = glowFromIdx(p?.colorIdx || 0, true);
+
+    slots.forEach((slot, idx) => {
+      slot.classList.add("hl");
+      slot.style.setProperty("--pairColor", c);
+      slot.style.setProperty("--pairGlowStrong", g);
+
+      const shell = slot.closest(".page-shell");
+      if (shell) {
+        shell.classList.add("hlpage");
+        shell.style.setProperty("--pairColor", c);
+        shell.style.setProperty("--pairGlowStrong", g);
+      }
+
+      if (idx === 0) {
+        const tag = document.createElement("div");
+        tag.className = "hlTag";
+        tag.textContent = "AQUÍ";
+        slot.appendChild(tag);
+      }
+    });
+
+    if (!scroll) return;
+    const shell = slots[0].closest(".page-shell");
+    if (shell) shell.scrollIntoView({ behavior:"smooth", block:"center" });
+  }
+
+  function focusDraftSlot({scroll=false} = {}){
+    if (!State.previewDraftSlots.length) return;
+    clearHighlight();
+
+    const first = State.previewDraftSlots[0];
+    first.classList.add("hl");
+    first.style.setProperty("--pairColor", "hsl(220 90% 50%)");
+    first.style.setProperty("--pairGlowStrong", "rgba(37,99,235,.22)");
+
+    const tag = document.createElement("div");
+    tag.className = "hlTag";
+    tag.textContent = "EDITAR";
+    first.appendChild(tag);
+
+    const shell = first.closest(".page-shell");
+    if (shell) {
+      shell.classList.add("hlpage");
+      shell.style.setProperty("--pairColor", "hsl(220 90% 50%)");
+      shell.style.setProperty("--pairGlowStrong", "rgba(37,99,235,.22)");
+    }
+
+    if (scroll && shell) shell.scrollIntoView({ behavior:"smooth", block:"center" });
+  }
+
+  async function safeBuildPreview(){
+    const seq = ++State.previewBuildSeq;
+    setPreviewLoading(true, "Cargando previsualización…");
+    await new Promise(r => requestAnimationFrame(() => r()));
+
+    try{
+      await buildPreviewCore(seq);
+    }catch(e){
+      console.error(e);
+      showEmptyPreview("Error en previsualización", "No se pudo renderizar alguna plantilla/SVG. Revisa consola y que los SVG estén accesibles.");
+      State.previewSlotsByProduct.clear();
+      State.previewDraftSlots = [];
+      updateTopButtons();
+    }finally{
+      if (seq === State.previewBuildSeq) setPreviewLoading(false);
+    }
+  }
+
+  async function buildPreviewCore(seq){
+    const includeDraft = (State.view === "form");
+    const items = buildItemsForPacking(includeDraft);
+
+    if (!items.length){
+      showEmptyPreview("Sin previsualización", "Agrega productos para ver cómo se acomodan en las hojas.");
+      State.previewSlotsByProduct.clear();
+      State.previewDraftSlots = [];
+      updateTopButtons();
+      return;
+    }
+
+    const targetWidthPx = CONFIG.render.previewPngWidthPx;
+    const total = items.length;
+
+    let done = 0;
+    await runWithConcurrency(items, CONFIG.render.previewConcurrency, async (it) => {
+      if (seq !== State.previewBuildSeq) return;
+
+      const p = it.product;
+      if (!p.template || !p.size) return;
+
+      done++;
+      if (done % 8 === 0) setPreviewLoading(true, `Renderizando ${Math.min(done, total)}/${total}…`);
+
+      try{
+        const r = await renderProductToPngs(p, targetWidthPx);
+        it._png = (p.size === SIZE.halfH) ? r.pngRotated : r.pngNormal;
+      }catch(err){
+        console.warn("Render falló:", err);
+        it._png = "";
+      }
+    });
+
+    if (seq !== State.previewBuildSeq) return;
+
+    const pages = packAll(items);
+    const preview = $("paperPreview");
+    preview.innerHTML = "";
+    State.previewSlotsByProduct = new Map();
+    State.previewDraftSlots = [];
+
+    pages.forEach((page, pageIndex) => {
+      const shell = document.createElement("div");
+      shell.className = "page-shell";
+      shell.style.setProperty("--previewScale", CONFIG.previewScale);
+
+      const label = document.createElement("div");
+      label.className = "pageLabel";
+      label.textContent = `HOJA ${pageIndex+1}`;
+      shell.appendChild(label);
+
+      const inner = document.createElement("div");
+      inner.className = "page-inner";
+
+      const paper = document.createElement("div");
+      paper.className = "paper-page " + (page.type === "full" ? "paper-full" : "paper-grid");
+
+      page.placements.forEach(pl => {
+        const it = pl.item;
+        if (!it._png) return;
+
+        const slot = document.createElement("div");
+        slot.className = "slot" + (it.isDraft ? " draft" : "");
+        slot.style.gridRow = `${pl.row} / span ${pl.rs}`;
+        slot.style.gridColumn = `${pl.col} / span ${pl.cs}`;
+        slot.dataset.productId = it.product.id || "";
+
+        if (it.isDraft) State.previewDraftSlots.push(slot);
+
+        if (!it.isDraft && it.product.id) {
+          const pid = it.product.id;
+          const p = State.products.find(x=>x.id===pid);
+          const c = colorFromIdx(p?.colorIdx || 0);
+          const g = glowFromIdx(p?.colorIdx || 0, true);
+
+          slot.style.setProperty("--pairColor", c);
+          slot.style.setProperty("--pairGlowStrong", g);
+
+          const mark = document.createElement("div");
+          mark.className = "pairMark";
+          slot.appendChild(mark);
+
+          if (!State.previewSlotsByProduct.has(pid)) State.previewSlotsByProduct.set(pid, []);
+          State.previewSlotsByProduct.get(pid).push(slot);
+        }
+
+        const img = document.createElement("img");
+        img.src = it._png;
+        img.alt = "Etiqueta";
+        slot.appendChild(img);
+
+        if (it.isDraft) {
+          const tag = document.createElement("div");
+          tag.className = "draftTag";
+          tag.textContent = State.mode === "edit" ? "EDITANDO" : "AGREGANDO";
+          slot.appendChild(tag);
+        }
+
+        paper.appendChild(slot);
+      });
+
+      inner.appendChild(paper);
+      shell.appendChild(inner);
+      preview.appendChild(shell);
+    });
+
+    updateTopButtons();
+  }
+
+  /* ============================
+     PRINT / PDF (optimizado)
+  ============================ */
+  function countTotalLabels(){
+    return State.products.reduce((acc, p) => acc + (p.qty || 0), 0);
+  }
+
+  function choosePdfQualityLevel(totalLabels){
+    if (!CONFIG.render.autoDownscaleOnLargeJobs) return CONFIG.render.pdfQualityLevel;
+
+    const sorted = [...CONFIG.render.autoDownscaleThresholds].sort((a,b) => b.minLabels - a.minLabels);
+    for (const t of sorted){
+      if (totalLabels >= t.minLabels) return t.level;
+    }
+    return CONFIG.render.pdfQualityLevel;
+  }
+
+  function choosePdfTargetWidth(totalLabels){
+    const level = choosePdfQualityLevel(totalLabels);
+    return CONFIG.render.pdfPngWidthPxByLevel[level] || CONFIG.render.pdfPngWidthPxByLevel.medium;
+  }
+
+  async function renderItemsForExport(items, targetWidthPx){
+    let i = 0;
+    const total = items.length;
+
+    await runWithConcurrency(items, CONFIG.render.exportConcurrency, async (it) => {
+      i++;
+      if (i % 10 === 0) setPreviewLoading(true, `Preparando exportación ${Math.min(i,total)}/${total}…`);
+
+      const p = it.product;
+      const r = await renderProductToPngs(p, targetWidthPx);
+      it._png = (p.size === SIZE.halfH) ? r.pngRotated : r.pngNormal;
+    });
+  }
+
+  async function buildPrintHtml(){
+    const items = buildItemsForPacking(false);
+    if (!items.length) return "";
+
+    const targetWidthPx = choosePdfTargetWidth(countTotalLabels());
+    await renderItemsForExport(items, targetWidthPx);
+
+    const pages = packAll(items);
+
+    return pages.map(pg => {
+      const cls = pg.type === "full" ? "paper-full" : "paper-grid";
+      const slots = pg.placements.map(pl => {
+        const it = pl.item;
+        if (!it._png) return "";
+        return `
+          <div class="slot" style="grid-row:${pl.row} / span ${pl.rs}; grid-column:${pl.col} / span ${pl.cs};">
+            <img src="${it._png}" alt="Etiqueta">
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="print-page">
+          <div class="paper-page ${cls}">
+            ${slots}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function handlePrint(){
+    if (!State.products.length) return;
+
+    const btn = $("btnPrint");
+    setBtnLoading(btn, true);
+    setPreviewLoading(true, "Preparando impresión…");
+
+    try{
+      $("printRoot").innerHTML = await buildPrintHtml();
+
+      // Espera un frame para que el DOM pinte
+      await new Promise(r => requestAnimationFrame(r));
+
+      window.print();
+    }finally{
+      setPreviewLoading(false);
+      setBtnLoading(btn, false);
+    }
+  }
+
+ async function handlePdf(){
+  if (!State.products.length) return;
+
+  const btn = $("btnPdf");
+
+  // 🔒 Bloquear botón + spinner
+  setBtnLoading(btn, true);
+
+  const items = buildItemsForPacking(false);
+  const totalLabels = items.length;
+  const targetWidthPx = choosePdfTargetWidth(totalLabels);
+
+  setPreviewLoading(true, `Generando PDF (${totalLabels} etiquetas)…`);
+
+  try{
+    // 🔁 Render secuencial (exportConcurrency = 1)
+    await renderItemsForExport(items, targetWidthPx);
+
+    const pages = packAll(items);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "letter"
+    });
+
+    const W = 215.9, H = 279.4;
+    const padGrid = 6, gap = 6;
+    const slotW = (W - 2 * padGrid - gap) / 2;
+    const slotH = (H - 2 * padGrid - gap) / 2;
+
+    const rect = (r, c) => ({
+      x: padGrid + (c - 1) * (slotW + gap),
+      y: padGrid + (r - 1) * (slotH + gap),
+      w: slotW,
+      h: slotH
+    });
+
+    
+    pages.forEach((pg, pageIndex) => {
+      if (pageIndex > 0) doc.addPage("letter", "portrait");
+
+      // 🟦 Página completa
+      if (pg.type === "full") {
+        const pad = 10;
+        const slot = { x: pad, y: pad, w: W - 2 * pad, h: H - 2 * pad };
+        const it = pg.placements[0].item;
+        if (it._png) {
+          doc.addImage(
+            it._png,
+            "PNG",
+            slot.x,
+            slot.y,
+            slot.w,
+            slot.h,
+            undefined,
+            CONFIG.render.pdfCompression
+          );
+        }
+        return;
+      }
+
+      // 🟩 Grid
+      pg.placements.forEach(pl => {
+        const it = pl.item;
+        if (!it._png) return;
+
+        if (pl.rs === 1 && pl.cs === 1) {
+          const r1 = rect(pl.row, pl.col);
+          doc.addImage(
+            it._png,
+            "PNG",
+            r1.x,
+            r1.y,
+            r1.w,
+            r1.h,
+            undefined,
+            CONFIG.render.pdfCompression
+          );
+          return;
+        }
+
+        if (pl.rs === 1 && pl.cs === 2) {
+          const r1 = rect(pl.row, 1);
+          const r2 = rect(pl.row, 2);
+          doc.addImage(
+            it._png,
+            "PNG",
+            r1.x,
+            r1.y,
+            (r2.x + r2.w - r1.x),
+            r1.h,
+            undefined,
+            CONFIG.render.pdfCompression
+          );
+        }
+      });
+    });
+
+    // 💾 Descargar
+    doc.save("etiquetas.pdf");
+
+  } catch (e) {
+    console.error(e);
+    openModal({
+      title: "Error PDF",
+      bodyHtml: `
+        <div class="modalText">
+          No se pudo generar el PDF.<br>
+          Baja la calidad en <b>CONFIG.render</b> o reduce la cantidad.
+        </div>
+      `,
+      actions: [{ text: "Cerrar", className: "btnNeutral", onClick: closeModal }]
+    });
+  } finally {
+    // 🔓 Liberar UI
+    setPreviewLoading(false);
+    setBtnLoading(btn, false);
+  }
+}
+
+  /* ============================
+     EXCEL (sin cambios funcionales)
+  ============================ */
+  async function exportCatalogExcel(){
+    setBtnLoading($("btnExportCatalog"), true);
+    try{
+      const ok = await ensureApiLoaded(true);
+      if (!ok || !State.apiAll.length){
+        openModal({
+          title:"No se pudo exportar",
+          bodyHtml:`<div class="modalText">El API no devolvió datos.</div>`,
+          actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+        });
+        return;
+      }
+
+      const headersImport = ["ApiId","Marca (Ref)","Modelo (Ref)","Producto (Ref)","Plantilla","Tamaño","Cantidad","Vigencia","VigenciaInicio","VigenciaFin"];
+      const defaultTemplate = "normal1";
+      const defaultSize = "1/4";
+      const defaultQty = 0;
+
+      const rowsImport = State.apiAll.map(it => ([
+        it.id,
+        it.brand || "",
+        it.model || "",
+        it.product || it.nombre || "",
+        defaultTemplate,
+        defaultSize,
+        defaultQty,
+        "NO",
+        "",
+        ""
+      ]));
+
+      const wsImport = XLSX.utils.aoa_to_sheet([headersImport, ...rowsImport]);
+      wsImport["!cols"] = [{wch:18},{wch:16},{wch:18},{wch:42},{wch:12},{wch:20},{wch:10},{wch:10},{wch:16},{wch:16}];
+
+      const headersRef = ["ApiId","Marca","Modelo","Producto","Pantalla","Batería","Cámara","Capacidad","Antes","Ahora","Cuota","Descuento","Color"];
+      const rowsRef = State.apiAll.map(it => ([
+        it.id,
+        it.brand || "",
+        it.model || "",
+        it.product || it.nombre || "",
+        it.screen || "",
+        it.battery || "",
+        it.camera || "",
+        it.capacity || "",
+        toQuetzales(it.antes) || "",
+        toQuetzales(it.ahora) || "",
+        toQuetzales(it.cuota) || "",
+        it.descuento || "",
+        it.color || ""
+      ]));
+      const wsRef = XLSX.utils.aoa_to_sheet([headersRef, ...rowsRef]);
+      wsRef["!cols"] = [{wch:18},{wch:16},{wch:18},{wch:40},{wch:14},{wch:14},{wch:20},{wch:18},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14}];
+
+      const notes = [
+        ["NOTAS"],
+        [""],
+        ["EDITA SOLO EN HOJA: Importar"],
+        ["Columnas editables:", "Plantilla, Tamaño, Cantidad, Vigencia (SI/NO), VigenciaInicio, VigenciaFin"],
+        ["Columnas SOLO referencia (se ignoran al importar):", "Marca (Ref), Modelo (Ref), Producto (Ref)"],
+        ["REGLA VIGENCIA:", "Si Vigencia = SI, entonces Inicio y Fin son obligatorias."],
+        ["VALIDACIÓN:", "Si algún ApiId no existe en el API al importar, se rechaza toda la importación."],
+        ["SEGURIDAD:", "Precios/Descuento/Color/Características se toman SIEMPRE del API al importar, NO del Excel."],
+        ["TIP:", "En 'Referencia API' puedes ver todas las características para comprobar IDs/plantilla."]
+      ];
+      const wsNotas = XLSX.utils.aoa_to_sheet(notes);
+      wsNotas["!cols"] = [{wch:26},{wch:90}];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsImport, "Importar");
+      XLSX.utils.book_append_sheet(wb, wsRef, "Referencia API");
+      XLSX.utils.book_append_sheet(wb, wsNotas, "Notas");
+
+      XLSX.writeFile(wb, "catalogo_api_importable.xlsx");
+    }catch(e){
+      console.error(e);
+      openModal({
+        title:"Error al exportar",
+        bodyHtml:`<div class="modalText">No se pudo generar el Excel.</div>`,
+        actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+      });
+    }finally{
+      setBtnLoading($("btnExportCatalog"), false);
+    }
+  }
+
+  function normalizeHeader(h){ return normalizeText(h).replace(/[\s\-_]+/g, ""); }
+
+  function toISODate(y,m,d){
+    const mm = String(m).padStart(2,"0");
+    const dd = String(d).padStart(2,"0");
+    return `${String(y)}-${mm}-${dd}`;
+  }
+
+  function parseDateCell(v){
+    if (!v) return "";
+    if (v instanceof Date && !isNaN(v.getTime())) return toISODate(v.getFullYear(), v.getMonth()+1, v.getDate());
+    if (typeof v === "number" && Number.isFinite(v) && window.XLSX?.SSF?.parse_date_code) {
+      const dc = XLSX.SSF.parse_date_code(v);
+      if (dc?.y && dc?.m && dc?.d) return toISODate(dc.y, dc.m, dc.d);
+    }
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return toISODate(m[3], parseInt(m[2],10), parseInt(m[1],10));
+    return "";
+  }
+
+  function truthyCell(v){
+    const t = normalizeText(v);
+    return t === "si" || t === "sí" || t === "s" || t === "1" || t === "true" || t === "x" || t === "yes";
+  }
+
+  function parseTemplateCell(v){
+    const raw = (v ?? "").toString().trim().toLowerCase();
+    if (!raw) return "";
+    const base = raw.replace(".svg","");
+    const map = {
+      "promocion":"promocion1.svg","promoción":"promocion1.svg","promocion1":"promocion1.svg",
+      "normal":"normal1.svg","normal1":"normal1.svg",
+      "liquidacion":"liquidacion1.svg","liquidación":"liquidacion1.svg","liquidacion1":"liquidacion1.svg",
+      "oferta":"oferta1.svg","oferta1":"oferta1.svg"
+    };
+    if (map[base]) return map[base];
+    const allowed = ["promocion1.svg","normal1.svg","liquidacion1.svg","oferta1.svg"];
+    if (allowed.includes(raw)) return raw;
+    return "";
+  }
+
+  function parseSizeCell(v){
+    const t = normalizeText(v);
+    if (!t) return "";
+    if (t.includes("1/4") || t.includes("cuarto") || t.includes("quarter")) return SIZE.quarter;
+    if (t.includes("media") || t.includes("mitad") || t.includes("horizontal") || t.includes("half")) return SIZE.halfH;
+    if (t.includes("carta") || t.includes("completa") || t.includes("full")) return SIZE.full;
+    if (t === SIZE.quarter || t === SIZE.halfH || t === SIZE.full) return t;
+    return "";
+  }
+
+  function parseQtyCell(v){
+    const n = parseInt(String(v ?? "").replace(/[^\d]/g,""), 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  async function readExcelFile(file){
+    if (!file) throw new Error("Archivo vacío.");
+    if (file.size > CONFIG.maxExcelBytes) throw new Error("Archivo demasiado grande.");
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:"array", cellDates:true });
+    const name = wb.SheetNames.includes("Importar") ? "Importar" : wb.SheetNames[0];
+    const ws = wb.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
+    return { wb, sheetName:name, ws, rows };
+  }
+
+  function buildHeaderMap(headers){
+    const map = {};
+    headers.forEach((h, idx) => { map[normalizeHeader(h)] = idx; });
+    return map;
+  }
+
+  function cellBy(map, row, keys){
+    for (const k of keys) {
+      const idx = map[k];
+      if (idx === 0 || idx) return row[idx];
+    }
+    return "";
+  }
+
+  function parseExcelImport(rows){
+    if (!rows || rows.length < 2) return { entries:[], errors:["El archivo no tiene datos (encabezados + 1 fila)."] };
+    if (rows.length > CONFIG.maxExcelRows) return { entries:[], errors:[`Excede el máximo de filas (${CONFIG.maxExcelRows}).`] };
+
+    const headerRow = rows[0].map(h => (h ?? "").toString().trim());
+    const map = buildHeaderMap(headerRow);
+
+    const K = {
+      apiId: ["apiid","id"],
+      template: ["plantilla","template"],
+      size: ["tamano","tamaño","size"],
+      qty: ["cantidad","qty","cant"],
+      vig: ["vigencia","usevig"],
+      ini: ["vigenciainicio","fechainicial","inicio"],
+      fin: ["vigenciafin","fechafinal","fin"]
+    };
+
+    const missing = [];
+    if (!K.apiId.some(k => (map[k]===0 || map[k]))) missing.push("ApiId");
+    if (!K.qty.some(k => (map[k]===0 || map[k]))) missing.push("Cantidad");
+    if (!K.vig.some(k => (map[k]===0 || map[k]))) missing.push("Vigencia");
+    if (!K.template.some(k => (map[k]===0 || map[k]))) missing.push("Plantilla");
+    if (!K.size.some(k => (map[k]===0 || map[k]))) missing.push("Tamaño");
+
+    if (missing.length) return { entries:[], errors: missing.map(c=>`Falta columna requerida: "${c}".`) };
+
+    const out = [];
+    const errors = [];
+
+    for (let r=1;r<rows.length;r++){
+      const row = rows[r];
+      if (!row || !row.length) continue;
+      const hasAny = row.some(x => String(x ?? "").trim() !== "");
+      if (!hasAny) continue;
+
+      const apiId = String(cellBy(map,row,K.apiId) ?? "").trim();
+      const template = parseTemplateCell(cellBy(map,row,K.template)) || "";
+      const size = parseSizeCell(cellBy(map,row,K.size)) || "";
+      const qty = parseQtyCell(cellBy(map,row,K.qty));
+      const useVig = truthyCell(cellBy(map,row,K.vig));
+      const vigStart = useVig ? parseDateCell(cellBy(map,row,K.ini)) : "";
+      const vigEnd = useVig ? parseDateCell(cellBy(map,row,K.fin)) : "";
+
+      if (!apiId) { errors.push(`Fila ${r+1}: ApiId vacío.`); continue; }
+      if (!template) { errors.push(`Fila ${r+1}: Plantilla inválida (usa normal/promocion/liquidacion/oferta).`); continue; }
+      if (!size) { errors.push(`Fila ${r+1}: Tamaño inválido (1/4, Media hoja horizontal, Carta completa).`); continue; }
+
+      if (!qty || qty < 1) continue;
+
+      if (useVig) {
+        if (!vigStart) errors.push(`Fila ${r+1}: VigenciaInicio obligatoria si Vigencia=SI.`);
+        if (!vigEnd) errors.push(`Fila ${r+1}: VigenciaFin obligatoria si Vigencia=SI.`);
+        if (vigStart && vigEnd && vigEnd < vigStart) errors.push(`Fila ${r+1}: VigenciaFin no puede ser menor que VigenciaInicio.`);
+      }
+
+      out.push({ apiId, template, size, qty, useVig, vigStart, vigEnd, rowIndex: r+1 });
+    }
+
+    if (errors.length) return { entries:[], errors };
+    if (!out.length) return { entries:[], errors:["No hay filas con Cantidad > 0 para importar."] };
+    return { entries: out, errors: [] };
+  }
+
+  function showImportErrors(errs){
+    openModal({
+      title:"Importación rechazada",
+      bodyHtml: `
+        <div class="modalText">El archivo tiene errores. No se creó ningún producto.</div>
+        <ul class="errList">
+          ${errs.slice(0, CONFIG.maxExcelErrorsShown).map(e=>`<li>${escapeHtml(e)}</li>`).join("")}
+        </ul>
+      `,
+      actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+    });
+  }
+
+  function askImportMode(){
+    if (!State.products.length) return Promise.resolve("merge");
+    return new Promise((resolve) => {
+      openModal({
+        title:"Importación masiva",
+        bodyHtml: `<div class="modalText">Ya tienes <b>${State.products.length}</b> producto(s). ¿Qué deseas hacer?</div>`,
+        actions:[
+          {text:"Cancelar", className:"btnNeutral", onClick: () => { closeModal(); resolve(null); }},
+          {text:"Reemplazar todo", className:"btnNeutral", onClick: () => { closeModal(); resolve("replace"); }},
+          {text:"Mantener y agregar", className:"btnSuccess", onClick: () => { closeModal(); resolve("merge"); }}
+        ]
+      });
+    });
+  }
+
+  function confirmBigImport(totalQty){
+    if (totalQty <= CONFIG.bigImportWarnQty) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      openModal({
+        title:"Importación grande",
+        bodyHtml:`<div class="modalText">Vas a crear <b>${totalQty}</b> etiquetas. ¿Continuar?</div>`,
+        actions:[
+          {text:"Cancelar", className:"btnNeutral", onClick: () => { closeModal(); resolve(false); }},
+          {text:"Continuar", className:"btnSuccess", onClick: () => { closeModal(); resolve(true); }}
+        ]
+      });
+    });
+  }
+
+  async function handleImportFile(file){
+    if (!file) return;
+    setBtnLoading($("btnImport"), true);
+
+    try{
+      const { rows } = await readExcelFile(file);
+      const parsed = parseExcelImport(rows);
+      if (parsed.errors?.length) { showImportErrors(parsed.errors); return; }
+
+      const ok = await ensureApiLoaded(true);
+      if (!ok || !State.apiAll.length) {
+        showImportErrors(["No se pudo validar contra el API (API vacío o error)."]);
+        return;
+      }
+
+      const apiMap = new Map(State.apiAll.map(x => [String(x.id), x]));
+
+      const missing = [];
+      for (const e of parsed.entries){
+        if (!apiMap.has(String(e.apiId))) missing.push(`Fila ${e.rowIndex}: ApiId "${e.apiId}" no existe en el API.`);
+      }
+      if (missing.length){
+        showImportErrors(missing);
+        return;
+      }
+
+      const totalQty = parsed.entries.reduce((a,b)=>a + (b.qty||0), 0);
+
+      const okBig = await confirmBigImport(totalQty);
+      if (!okBig) return;
+
+      const mode = await askImportMode();
+      if (!mode) return;
+
+      const now = formatDateTimeNow();
+
+      if (mode === "replace") {
+        State.products = [];
+        State.templateCache.clear();
+        State.renderCache.clear();
+        State.coverCache.clear();
+      }
+
+      const alloc = createColorAllocator();
+
+      parsed.entries.forEach(e => {
+        const it = apiMap.get(String(e.apiId));
+
+        const p = emptyProduct();
+        p.id = uid();
+
+        p.apiId = it.id;
+        p.apiBrand = it.brand || "";
+        p.apiModel = it.model || "";
+        p.apiScreen = it.screen || "";
+        p.apiBattery = it.battery || "";
+        p.apiCamera = it.camera || "";
+        p.apiCapacity = it.capacity || "";
+
+        p.nombre = (it.nombre || it.label || "").trim();
+
+        p.antes = it.antes || "";
+        p.ahora = it.ahora || "";
+        p.cuota = it.cuota || "";
+        p.descuento = it.descuento || "";
+        p.color = it.color || "";
+        p.coverUrl = it.coverUrl || "";
+
+        p.template = e.template;
+        p.size = e.size;
+        p.qty = e.qty;
+
+        p.useVig = !!e.useVig;
+        p.vigStart = e.useVig ? (e.vigStart || "") : "";
+        p.vigEnd = e.useVig ? (e.vigEnd || "") : "";
+
+        p.impresionAt = now;
+        p.colorIdx = alloc();
+
+        State.products.push(p);
+      });
+
+      const last = State.products[State.products.length-1];
+      if (last) { State.selectedId = last.id; State.expandedId = last.id; }
+
+      saveState();
+      updateTopButtons();
+      renderList();
+
+      await requestPreviewRebuild({ scrollToSelected: true });
+
+      openModal({
+        title:"Importación completada",
+        bodyHtml:`<div class="modalText">Se importaron <b>${parsed.entries.length}</b> producto(s) y se crearán <b>${totalQty}</b> etiqueta(s).</div>`,
+        actions:[{text:"OK", className:"btnSuccess", onClick: closeModal}]
+      });
+
+    }catch(e){
+      console.error(e);
+      openModal({
+        title:"Error al importar",
+        bodyHtml:`<div class="modalText">No se pudo leer el archivo. Asegúrate que sea Excel (.xlsx/.xls).</div>`,
+        actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+      });
+    }finally{
+      setBtnLoading($("btnImport"), false);
+      $("fileImport").value = "";
+    }
+  }
+
+  /* ============================
+     EVENTS
+  ============================ */
+  $("modalX").addEventListener("click", closeModal);
+  $("modalOverlay").addEventListener("click", (e) => { if (e.target === $("modalOverlay")) closeModal(); });
+
+  $("btnShowForm").addEventListener("click", startAdd);
+  $("btnCancel").addEventListener("click", () => setView("list"));
+  $("btnSave").addEventListener("click", saveDraft);
+
+  $("btnReloadApi").addEventListener("click", reloadApiAndSyncProducts);
+
+  $("apiSearch").addEventListener("input", applyApiFilters);
+  $("apiBrand").addEventListener("change", applyApiFilters);
+
+  const onFormChange = () => { validateDraft(); requestPreviewRebuild({ focusDraft: State.view === "form" }); };
+
+  $("fTemplate").addEventListener("change", onFormChange);
+  $("fSize").addEventListener("change", onFormChange);
+  $("fQty").addEventListener("input", onFormChange);
+  $("fUseVig").addEventListener("change", onFormChange);
+  $("fVigStart").addEventListener("change", onFormChange);
+  $("fVigEnd").addEventListener("change", onFormChange);
+
+  $("apiList").addEventListener("click", (e) => {
+    const row = e.target.closest(".apiRow");
+    if (!row) return;
+    const id = row.dataset.apiId || "";
+    if (!id) return;
+
+    $("fApiId").value = id;
+    renderApiList();
+    validateDraft();
+    requestPreviewRebuild({ focusDraft: true });
+  });
+
+  $("apiList").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const row = e.target.closest(".apiRow");
+    if (!row) return;
+    e.preventDefault();
+    row.click();
+  });
+
+  $("btnExportCatalog").addEventListener("click", exportCatalogExcel);
+
+  $("btnImport").addEventListener("click", () => $("fileImport").click());
+  $("fileImport").addEventListener("change", (e) => handleImportFile(e.target.files?.[0]));
+
+  $("btnPrint").addEventListener("click", handlePrint);
+  $("btnPdf").addEventListener("click", handlePdf);
+
+  $("btnResetAll").addEventListener("click", () => {
+    openModal({
+      title:"Limpiar todo",
+      bodyHtml:`<div class="modalText">Esto eliminará todos los productos guardados. ¿Continuar?</div>`,
+      actions:[
+        {text:"Cancelar", className:"btnNeutral", onClick: closeModal},
+        {text:"Sí, limpiar", className:"btnNeutral", onClick: () => {
+          closeModal();
+          State.products = [];
+          State.selectedId = null;
+          State.expandedId = null;
+          State.templateCache.clear();
+          State.renderCache.clear();
+          State.coverCache.clear();
+          localStorage.removeItem(CONFIG.storageKey);
+          updateTopButtons();
+          renderList();
+          requestPreviewRebuild();
+        }}
+      ]
+    });
+  });
+
+  $("itemsWrap").addEventListener("click", (e) => {
+    const item = e.target.closest(".item");
+    if (!item) return;
+    const pid = item.dataset.id;
+
+    const actionBtn = e.target.closest("button");
+    const action = actionBtn?.dataset?.action || "";
+
+    if (action === "toggle") {
+      State.expandedId = (State.expandedId === pid) ? null : pid;
+      renderList();
+      saveState();
+      return;
+    }
+    if (action === "edit") { startEdit(pid); return; }
+    if (action === "delete") { deleteProduct(pid); return; }
+
+    selectProduct(pid, {scrollPreview:true});
+  });
+
+  $("paperPreview").addEventListener("click", (e) => {
+  const slot = e.target.closest(".slot");
+  if (!slot) return;
+
+  const pid = slot.dataset.productId || "";
+  if (!pid || pid === "__draft__") return;
+
+  selectProduct(pid, { scrollPreview: false });
+
+  const el = document.querySelector(`.item[data-id="${CSS.escape(pid)}"]`);
+  if (el) el.scrollIntoView({ behavior:"smooth", block:"center" });
+});
+
+
+
+
+  /* ============================
+     INIT
+  ============================ */
+  loadState();
+  updateTopButtons();
+  renderList();
+  requestPreviewRebuild();
+  fetchApi();
+
+})();
+</script>
+
+</body>
+</html>
