@@ -1602,7 +1602,7 @@
     return { w, h };
   }
 
-  const COVER_PRESERVE_ASPECT = "xMidYMid slice"; // o "xMidYMid meet"
+  const COVER_PRESERVE_ASPECT = "xMinYMid slice"; // o "xMidYMid meet"
 
 function setSvgImageHref(imageEl, href){
   if (!imageEl) return;
@@ -1616,6 +1616,17 @@ function setSvgImageHref(imageEl, href){
     imageEl.setAttribute("preserveAspectRatio", COVER_PRESERVE_ASPECT);
   }
 }
+
+function offsetSvgImage(imageEl, dx = 0, dy = 0){
+  if (!imageEl) return;
+
+  const prev = imageEl.getAttribute("transform") || "";
+  imageEl.setAttribute(
+    "transform",
+    `${prev} translate(${dx}, ${dy})`.trim()
+  );
+}
+
 
 
   async function fetchCoverAsDataUrl(url){
@@ -1756,13 +1767,40 @@ function setSvgImageHref(imageEl, href){
     const svg = host.querySelector("svg");
     if (!svg) throw new Error("SVG inválido: " + p.template);
 
+    // 🔤 EMBEBER TIPOGRAFÍA EN EL SVG (CRÍTICO)
+const style = document.createElementNS(
+  "http://www.w3.org/2000/svg",
+  "style"
+);
+
+style.textContent = `
+@font-face {
+  font-family: 'CarvingSoft';
+  src: url('./fonts/CarvingSoft-Regular.otf') format('opentype');
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'CarvingSoft';
+  src: url('./fonts/CarvingSoft-Bold.otf') format('opentype');
+  font-weight: 700;
+}
+text, tspan {
+  font-family: 'CarvingSoft';
+}
+`;
+
+svg.insertBefore(style, svg.firstChild);
+
     const idx = buildIdIndex(svg);
 
     const coverEls = findAllByAnyId(svg, SVG_IDS.coverCandidates, idx);
     if (coverEls.length && p.coverUrl) {
       try {
         const dataUrl = await fetchCoverAsDataUrl(p.coverUrl);
-        if (dataUrl) coverEls.forEach(el => setSvgImageHref(el, dataUrl));
+        if (dataUrl) coverEls.forEach(el => {
+  setSvgImageHref(el, dataUrl);
+  offsetSvgImage(el, -50, 0); // ← mueve 20 unidades SVG a la izquierda
+});
       } catch (e) {
         console.warn("Cover no cargado:", e);
       }
