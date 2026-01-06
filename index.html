@@ -1,6 +1,5 @@
 <!doctype html>
-<html lang="es">
-<head>
+<html lang="es"><head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Editor Etiqueta</title>
@@ -50,6 +49,21 @@
       height: calc(100vh - 40px - 32px);
       min-height: 540px;
     }
+
+    @font-face{
+  font-family:'CarvingSoft';
+  src:url('./fonts/CarvingSoft-Bold.otf') format('otf');
+  font-weight:400;
+  font-style:normal;
+  }
+  @font-face{
+    font-family:'CarvingSoft';
+    src:url('./fonts/CarvingSoft-Bold.otf') format('otf');
+    font-weight:700;
+    font-style:normal;
+  }
+
+
     @media (max-width: 980px){
       body{overflow:auto;height:auto;}
       .wrap{grid-template-columns:1fr;height:auto;min-height:auto;}
@@ -1756,6 +1770,56 @@ function offsetSvgImage(imageEl, dx = 0, dy = 0){
   }
   function applyColorToAll(els, v){ els.forEach(el => applyColorToElement(el, v)); }
 
+
+  
+// Carga la fuente en el documento (para que Canvas/SVG la use al rasterizar)
+let __fontsReady;
+async function ensureFontsLoaded(){
+  if (__fontsReady) return __fontsReady;
+
+  __fontsReady = (async () => {
+    if (!("fonts" in document) || !document.fonts.load) return;
+
+    // OJO: esto asume que ya existe @font-face en CSS (ver punto 2)
+    await Promise.all([
+      document.fonts.load('400 16px "CarvingSoft"'),
+      document.fonts.load('700 16px "CarvingSoft"')
+    ]);
+    await document.fonts.ready;
+  })();
+
+  return __fontsReady;
+}
+
+let __fontDataUrl = null;
+
+function arrayBufferToBase64(buffer){
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function getFontAsDataUrl(){
+  if (__fontDataUrl) return __fontDataUrl;
+
+  const fontFileUrl = new URL("./fonts/CarvingSoft-Bold.otf", location.href).href;
+  const res = await fetch(fontFileUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error("No se pudo cargar la fuente: " + fontFileUrl);
+
+  const buf = await res.arrayBuffer();
+  const b64 = arrayBufferToBase64(buf);
+
+  __fontDataUrl = `data:font/otf;base64,${b64}`;
+  return __fontDataUrl;
+}
+
+
+
+
   async function renderProductToPngs(p, targetWidthPx){
     const key = renderKey(p, targetWidthPx);
     if (State.renderCache.has(key)) return State.renderCache.get(key);
@@ -1767,29 +1831,44 @@ function offsetSvgImage(imageEl, dx = 0, dy = 0){
     const svg = host.querySelector("svg");
     if (!svg) throw new Error("SVG inválido: " + p.template);
 
-    // 🔤 EMBEBER TIPOGRAFÍA EN EL SVG (CRÍTICO)
-const style = document.createElementNS(
-  "http://www.w3.org/2000/svg",
-  "style"
-);
+    await ensureFontsLoaded();
+
+    // Fuerza la fuente
+    svg.querySelectorAll("text, tspan").forEach(el => {
+      el.style.setProperty("font-family", "CarvingSoft", "important");
+    });
+
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+
+let fontSrc = "";
+try{
+  const dataUrl = await getFontAsDataUrl();
+  fontSrc = `url('${dataUrl}') format('opentype')`;
+}catch(e){
+  // Fallback por si falla el base64 (último recurso)
+  const fontUrl = new URL("./fonts/CarvingSoft-Bold.otf", location.href).href;
+  fontSrc = `url('${fontUrl}') format('opentype')`;
+}
 
 style.textContent = `
-@font-face {
-  font-family: 'CarvingSoft';
-  src: url('./fonts/CarvingSoft-Regular.otf') format('opentype');
-  font-weight: 400;
+@font-face{
+  font-family:'CarvingSoft';
+  src:${fontSrc};
+  font-weight:700;
+  font-style:normal;
 }
-@font-face {
-  font-family: 'CarvingSoft';
-  src: url('./fonts/CarvingSoft-Bold.otf') format('opentype');
-  font-weight: 700;
-}
-text, tspan {
-  font-family: 'CarvingSoft';
+text, tspan{
+  font-family:'CarvingSoft' !important;
+  font-weight:700 !important;
 }
 `;
 
 svg.insertBefore(style, svg.firstChild);
+
+
+
+
+
 
     const idx = buildIdIndex(svg);
 
