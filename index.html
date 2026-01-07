@@ -595,6 +595,17 @@
 <script>
 (() => {
   "use strict";
+  
+  function fitContainRect(imgW, imgH, box){
+  const s = Math.min(box.w / imgW, box.h / imgH);
+  const w = imgW * s;
+  const h = imgH * s;
+  return {
+    x: box.x + (box.w - w) / 2,
+    y: box.y + (box.h - h) / 2,
+    w, h
+  };
+}
 
   const CONFIG = {
     storageKey: "editor_etiquetas_api_v3_excel_simple",
@@ -608,7 +619,7 @@
     // ✅ Rendimiento/calidad (toca SOLO aquí)
     render: {
       // Preview: si tienes muchísimas etiquetas, baja este número
-      previewPngWidthPx: 900,
+      previewPngWidthPx: 500,
 
       // PDF/Print: control de “calidad”
       pdfQualityLevel: "low", // "low" | "medium" | "high"
@@ -623,6 +634,7 @@
 
       // Concurrencia para render (reduce freeze)
       previewConcurrency: 2,
+      previewMaxPages: 30,
       exportConcurrency: 1,
 
       // jsPDF addImage compression: "FAST" ayuda mucho a no trabarse
@@ -654,11 +666,15 @@
 
     discount: ["caracteristica_descuento","descuento","discount","porcentaje_descuento","caracteristica_porcentaje_descuento","pct_descuento"],
     color: ["caracteristica_color","color","color_hex","hex","codigo_color","caracteristica_color_hex"],
-    cover: ["caracteristica_url_cover","caracteristica_cover","url_cover","cover","image","imagen"]
+    cover: ["caracteristica_url_cover","caracteristica_cover","url_cover","cover","image","imagen"],
+    logo:  ["caracteristica_url_logo","url_logo","logo","logo_url","caracteristica_logo"]
+
   };
 
   const SVG_IDS = {
     coverCandidates: ["cover", "img_cover", "image_cover"],
+    logoCandidates:  ["logo", "img_logo", "image_logo"],
+
 
     nombreCandidates: ["nombre_producto","nombre","producto","titulo","title"],
     marcaCandidates: ["marca","brand","caracteristica_marca"],
@@ -795,6 +811,7 @@
       descuento:"",
       color:"",
       coverUrl:"",
+      logoUrl:"",
       template:"",
       size:"",
       qty:1,
@@ -828,8 +845,25 @@
     previewBuildInFlight: false,
     previewRebuildQueued: false,
     previewRebuildOptions: {},
-    previewLastPromise: Promise.resolve()
+    previewLastPromise: Promise.resolve(),
+    syncing: false
+
   };
+
+  function renderListLoading(){
+  const wrap = $("itemsWrap");
+  wrap.innerHTML = `
+    <div class="listEmpty">
+      <b>Cargando productos…</b><br>
+      Sincronizando con el API. No cierres esta página.
+      <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
+        <span class="spin" style="color:#2563eb"></span>
+        <span style="font-size:12px;color:#64748b;font-weight:700">Actualizando…</span>
+      </div>
+    </div>
+  `;
+}
+
 
   function saveState(){
     try{
@@ -978,11 +1012,13 @@
     const descuento = normalizeDiscount(pickField(raw, API_FIELD_MAP.discount));
     const color = String(pickField(raw, API_FIELD_MAP.color) || "").trim();
     const coverUrl = String(pickField(raw, API_FIELD_MAP.cover) || "").trim();
+    const logoUrl  = String(pickField(raw, API_FIELD_MAP.logo) || "").trim();
+
 
     const label = `${(brand?brand+" · ":"")}${(model?model:"")}${(product?" — "+product:"")} [${id}]`;
     const nombre = (product || model || brand || id).trim();
 
-    return { id, brand, model, product, nombre, antes, ahora, cuota, screen, battery, camera, capacity, descuento, color, coverUrl, label, raw };
+    return { id, brand, model, product, nombre, antes, ahora, cuota, screen, battery, camera, capacity, descuento, color, coverUrl, logoUrl, label, raw };
   }
 
   async function fetchApi(){
@@ -1110,6 +1146,8 @@
     State.draft.descuento = item.descuento || "";
     State.draft.color = item.color || "";
     State.draft.coverUrl = item.coverUrl || "";
+    State.draft.logoUrl  = item.logoUrl  || "";
+
 
     $("apiPicked").style.display = "block";
     $("apiPicked").innerHTML = `<span class="pill">Seleccionado</span> ${escapeHtml(item.label)}`;
@@ -1157,21 +1195,31 @@
       cuota: apiItem.cuota || "",
       descuento: apiItem.descuento || "",
       color: apiItem.color || "",
-      coverUrl: apiItem.coverUrl || ""
+      coverUrl: apiItem.coverUrl || "",
+      logoUrl:  apiItem.logoUrl  || "",
+
     };
   }
 
-  async function reloadApiAndSyncProducts(){
+  async function reloadApiAndSyncProducts({ silent = false } = {}){
+    setUiBusy(true);
+
     setBtnLoading($("btnReloadApi"), true);
 
     try{
       const ok = await ensureApiLoaded(true);
+      
+
       if (!ok || !State.apiAll.length) {
-        openModal({
-          title:"No se pudo recargar",
-          bodyHtml:`<div class="modalText">El API no devolvió datos.</div>`,
-          actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
-        });
+        if (!silent) {
+          openModal({
+            title:"No se pudo recargar",
+            bodyHtml:`<div class="modalText">El API no devolvió datos.</div>`,
+            actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+          });
+        } else {
+          console.warn("Auto-sync: API vacío o error.");
+        }
         return;
       }
 
@@ -1193,7 +1241,6 @@
           continue;
         }
 
-        // Si no existe el ID: intentar re-vincular por marca/modelo/producto
         const compositeKey = idx.makeKey(p.apiBrand, p.apiModel, p.nombre || "");
         const fromComposite = idx.byComposite.get(compositeKey);
 
@@ -1228,33 +1275,48 @@
 
       if (State.view === "form") validateDraft();
 
-      openModal({
-        title:"Sincronización completa",
-        bodyHtml: `
-          <div class="modalText">
-            <div><b>Actualizados:</b> ${updated}</div>
-            <div><b>Re-vinculados (ID cambió):</b> ${relinked}</div>
-            <div><b>Eliminados (ya no existen):</b> ${removed}</div>
-          </div>
-        `,
-        actions:[{text:"OK", className:"btnSuccess", onClick: closeModal}]
-      });
+      if (!silent) {
+        openModal({
+          title:"Sincronización completa",
+          bodyHtml: `
+            <div class="modalText">
+              <div><b>Actualizados:</b> ${updated}</div>
+              <div><b>Re-vinculados (ID cambió):</b> ${relinked}</div>
+              <div><b>Eliminados (ya no existen):</b> ${removed}</div>
+            </div>
+          `,
+          actions:[{text:"OK", className:"btnSuccess", onClick: closeModal}]
+        });
+      } else {
+        console.log(`Auto-sync OK: updated=${updated}, relinked=${relinked}, removed=${removed}`);
+      }
+
     }catch(e){
       console.error(e);
-      openModal({
-        title:"Error",
-        bodyHtml:`<div class="modalText">Falló la sincronización. Revisa consola.</div>`,
-        actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
-      });
+      if (!silent) {
+        openModal({
+          title:"Error",
+          bodyHtml:`<div class="modalText">Falló la sincronización. Revisa consola.</div>`,
+          actions:[{text:"Cerrar", className:"btnNeutral", onClick: closeModal}]
+        });
+      }
     }finally{
       setBtnLoading($("btnReloadApi"), false);
+      setUiBusy(false);
+
     }
   }
+
 
   /* ============================
      LISTA
   ============================ */
+
   function renderList(){
+  if (State.syncing){
+    renderListLoading();
+    return;
+  }
     const wrap = $("itemsWrap");
 
     if (!State.products.length){
@@ -1332,13 +1394,17 @@
   function selectProduct(pid, {scrollPreview=false} = {}){
   State.selectedId = pid;
 
-  // 🔁 Toggle real
+  // Toggle real
   State.expandedId = (State.expandedId === pid) ? null : pid;
 
   renderList();
-  requestPreviewRebuild({ scrollToSelected: scrollPreview });
+
+  // ✅ SOLO resaltar (sin rebuild)
+  highlightProduct(pid, { scroll: scrollPreview });
+
   saveState();
 }
+
 
 
   /* ============================
@@ -1595,6 +1661,22 @@
     el.textContent = t;
   }
 
+  function setUiBusy(busy){
+  State.syncing = busy;
+
+  // botones principales
+  $("btnShowForm").disabled = busy;
+  $("btnImport").disabled = busy;
+  $("btnExportCatalog").disabled = busy;
+  $("btnPdf").disabled = busy;
+  $("btnPrint").disabled = busy;
+  $("btnResetAll").disabled = busy;
+
+  // fuerza re-render del panel izquierdo
+  renderList();
+}
+
+
   function setSvgTextAll(els, txt){ els.forEach(el => setSvgText(el, txt)); }
   function clearSvgTextAll(els){ els.forEach(el => clearSvgText(el)); }
 
@@ -1617,19 +1699,23 @@
   }
 
   const COVER_PRESERVE_ASPECT = "xMinYMid slice"; // o "xMidYMid meet"
+  const LOGO_PRESERVE_ASPECT  = "xMidYMid meet";
 
-function setSvgImageHref(imageEl, href){
+
+function setSvgImageHref(imageEl, href, preserveAspect = "xMidYMid meet"){
   if (!imageEl) return;
 
   imageEl.setAttribute("href", href);
   imageEl.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", href);
 
-  // Evita deformación
-  const current = (imageEl.getAttribute("preserveAspectRatio") || "").toLowerCase();
-  if (!current || current === "none") {
-    imageEl.setAttribute("preserveAspectRatio", COVER_PRESERVE_ASPECT);
-  }
+  // ✅ Fuerza SIEMPRE: evita "none", "none " y cualquier valor raro del template
+  imageEl.setAttribute("preserveAspectRatio", preserveAspect);
+
+  // (Opcional) si alguna plantilla trae escalado deformante en transform:
+  // imageEl.removeAttribute("transform");
 }
+
+
 
 function offsetSvgImage(imageEl, dx = 0, dy = 0){
   if (!imageEl) return;
@@ -1691,16 +1777,16 @@ function offsetSvgImage(imageEl, dx = 0, dy = 0){
 
     const img = new Image();
     img.crossOrigin = "anonymous";
-
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = reject;
       img.src = url;
     });
 
-    const canvas = $("workCanvas");
+    const canvas = document.createElement("canvas");
     canvas.width = cw;
     canvas.height = ch;
+
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,cw,ch);
@@ -1718,9 +1804,10 @@ function offsetSvgImage(imageEl, dx = 0, dy = 0){
       img.src = pngDataUrl;
     });
 
-    const canvas = $("workCanvas");
+    const canvas = document.createElement("canvas");
     canvas.width = img.height;
     canvas.height = img.width;
+
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1732,25 +1819,37 @@ function offsetSvgImage(imageEl, dx = 0, dy = 0){
     return canvas.toDataURL("image/png");
   }
 
-  function renderKey(p, targetWidthPx){
-    return JSON.stringify({
-      targetWidthPx,
-      template:p.template,
-      nombre:(p.nombre||"").trim().toUpperCase(),
-      brand:(p.apiBrand||"").trim().toUpperCase(),
-      model:(p.apiModel||"").trim().toUpperCase(),
-      screen:(p.apiScreen||"").trim(),
-      battery:(p.apiBattery||"").trim(),
-      camera:(p.apiCamera||"").trim(),
-      capacity:(p.apiCapacity||"").trim(),
-      antes:p.antes, ahora:p.ahora, cuota:p.cuota,
-      descuento:(p.descuento||"").trim(),
-      color:(p.color||"").trim(),
-      useVig:!!p.useVig, vigStart:p.vigStart||"", vigEnd:p.vigEnd||"",
-      impresionAt:(p.impresionAt||"").trim(),
-      coverUrl:(p.coverUrl||"").trim()
-    });
-  }
+
+ 
+
+  function renderKey(p, targetWidthPx, mode = "preview"){
+  return JSON.stringify({
+    mode, // <-- clave separada por modo
+    targetWidthPx,
+    template: p.template,
+
+    nombre: (p.nombre||"").trim().toUpperCase(),
+    brand: (p.apiBrand||"").trim().toUpperCase(),
+    model: (p.apiModel||"").trim().toUpperCase(),
+
+    screen: (p.apiScreen||"").trim(),
+    battery: (p.apiBattery||"").trim(),
+    camera: (p.apiCamera||"").trim(),
+    capacity: (p.apiCapacity||"").trim(),
+
+    antes: p.antes, ahora: p.ahora, cuota: p.cuota,
+    descuento: (p.descuento||"").trim(),
+    color: (p.color||"").trim(),
+    useVig: !!p.useVig, vigStart: p.vigStart||"", vigEnd: p.vigEnd||"",
+    coverUrl: (p.coverUrl||"").trim(),
+    logoUrl: (p.logoUrl||"").trim(),
+
+    // 🔥 IMPORTANTE:
+    // en preview NO afecta la imagen (solo texto pequeño), así que no lo metas al cache
+    impresionAt: (mode === "export") ? ((p.impresionAt||"").trim()) : ""
+  });
+}
+
 
   function applyColorToElement(el, colorValue){
     if (!el || !colorValue) return;
@@ -1819,16 +1918,18 @@ async function getFontAsDataUrl(){
 
 
 
-
-  async function renderProductToPngs(p, targetWidthPx){
-    const key = renderKey(p, targetWidthPx);
+  async function renderProductToPngs(p, targetWidthPx, mode = "preview"){
+    const key = renderKey(p, targetWidthPx, mode);
     if (State.renderCache.has(key)) return State.renderCache.get(key);
+    
 
     const svgText = await loadTemplateText(p.template);
-    const host = $("__svgHostHidden");
-    host.innerHTML = svgText;
+    const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+    const svg = doc.querySelector("svg");
+    if (!svg) throw new Error("SVG inválido: " + p.template);
 
-    const svg = host.querySelector("svg");
+
+  
     if (!svg) throw new Error("SVG inválido: " + p.template);
 
     await ensureFontsLoaded();
@@ -1868,22 +1969,64 @@ svg.insertBefore(style, svg.firstChild);
 
 
 
+    const COVER_ADJUST = { dx: -250, dy: 225, scale: 1.5 }; // scale > 1 = zoom
+    function transformSvgImage(imageEl, { dx=0, dy=0, scale=1 } = {}){
+  if (!imageEl) return;
+
+  const base = imageEl.getAttribute("data-base-transform") ?? (imageEl.getAttribute("transform") || "");
+  if (!imageEl.getAttribute("data-base-transform")) {
+    imageEl.setAttribute("data-base-transform", base);
+  }
+
+  // Escala alrededor del centro del rectángulo del <image> (x,y,width,height)
+  const x = parseFloat(imageEl.getAttribute("x") || "0");
+  const y = parseFloat(imageEl.getAttribute("y") || "0");
+  const w = parseFloat(imageEl.getAttribute("width") || "0");
+  const h = parseFloat(imageEl.getAttribute("height") || "0");
+  const cx = x + w/2;
+  const cy = y + h/2;
+
+  const t =
+    `${base} translate(${dx},${dy}) ` +
+    `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`;
+
+  imageEl.setAttribute("transform", t.trim());
+}
+
 
 
     const idx = buildIdIndex(svg);
 
     const coverEls = findAllByAnyId(svg, SVG_IDS.coverCandidates, idx);
-    if (coverEls.length && p.coverUrl) {
-      try {
-        const dataUrl = await fetchCoverAsDataUrl(p.coverUrl);
-        if (dataUrl) coverEls.forEach(el => {
-  setSvgImageHref(el, dataUrl);
-  offsetSvgImage(el, -50, 0); // ← mueve 20 unidades SVG a la izquierda
-});
-      } catch (e) {
-        console.warn("Cover no cargado:", e);
+      if (coverEls.length && p.coverUrl) {
+        try {
+          const dataUrl = await fetchCoverAsDataUrl(p.coverUrl);
+          if (dataUrl) coverEls.forEach(el => {
+   
+            setSvgImageHref(el, dataUrl, COVER_PRESERVE_ASPECT);
+            transformSvgImage(el, COVER_ADJUST);
+
+
+          });
+        } catch (e) {
+          console.warn("Cover no cargado:", e);
+        }
       }
-    }
+
+    const logoEls = findAllByAnyId(svg, SVG_IDS.logoCandidates, idx);
+      if (logoEls.length && p.logoUrl) {
+        try {
+          const dataUrl = await fetchCoverAsDataUrl(p.logoUrl); // reutilizamos la misma función
+          if (dataUrl) logoEls.forEach(el => {
+            setSvgImageHref(el, dataUrl, LOGO_PRESERVE_ASPECT);
+            // Si necesitas moverlo:
+            // offsetSvgImage(el, 0, 0);
+          });
+        } catch (e) {
+          console.warn("Logo no cargado:", e);
+        }
+      }
+
 
     const nameTxt  = (p.nombre||"").trim().toUpperCase();
     const brandTxt = (p.apiBrand||"").trim().toUpperCase();
@@ -1946,26 +2089,38 @@ svg.insertBefore(style, svg.firstChild);
     const pngRotated = await rotatePng90(pngNormal);
 
     const out = { pngNormal, pngRotated };
-    State.renderCache.set(key, out);
+    cacheSet(State.renderCache, key, out);
+
     return out;
   }
 
   /* ============================
      Concurrencia controlada
   ============================ */
+
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-  async function runWithConcurrency(list, concurrency, handler){
-    const items = Array.from(list);
-    const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
-      while (items.length) {
-        const it = items.shift();
-        await handler(it);
-        await sleep(0);
-      }
-    });
-    await Promise.all(workers);
-  }
+async function runWithConcurrency(list, concurrency, handler){
+  const arr = Array.from(list);
+  const workersCount = Math.max(1, concurrency | 0);
+
+  let i = 0;
+
+  const workers = Array.from({ length: workersCount }, async () => {
+    while (true) {
+      const idx = i++;
+      if (idx >= arr.length) break;
+
+      await handler(arr[idx], idx);
+
+      // cede el hilo cada cierto número de tareas (evita freeze)
+      if ((idx & 15) === 0) await sleep(0);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
 
   /* ============================
      PACKING + PREVIEW
@@ -2026,23 +2181,33 @@ svg.insertBefore(style, svg.firstChild);
   }
 
   function buildItemsForPacking(includeDraft){
-    const items = [];
-    for (const p of State.products){
-      for (let i=0;i<(p.qty||0);i++){
-        items.push({ product:p, isDraft:false });
-      }
-    }
+  const items = [];
 
-    if (!includeDraft || State.view !== "form") return items;
+  const isEditingPreview =
+    includeDraft && State.view === "form" && State.mode === "edit" && State.editingId;
 
-    const d = State.draft;
-    if (d.template && d.size && d.qty && d.apiId) {
-      for (let i=0;i<(d.qty||1);i++){
-        items.push({ product:{...d, id:"__draft__"}, isDraft:true });
-      }
+  // 1) Productos guardados, pero si estamos editando, omitimos el que se está editando
+  for (const p of State.products){
+    if (isEditingPreview && p.id === State.editingId) continue;
+
+    for (let i = 0; i < (p.qty || 0); i++){
+      items.push({ product: p, isDraft: false });
     }
-    return items;
   }
+
+  // 2) Draft (lo que estás editando / agregando)
+  if (!includeDraft || State.view !== "form") return items;
+
+  const d = State.draft;
+  if (d.template && d.size && d.qty && d.apiId) {
+    for (let i = 0; i < (d.qty || 1); i++){
+      items.push({ product: { ...d, id: "__draft__" }, isDraft: true });
+    }
+  }
+
+  return items;
+}
+
 
   function showEmptyPreview(title, text){
     $("paperPreview").innerHTML = `
@@ -2145,114 +2310,166 @@ svg.insertBefore(style, svg.firstChild);
   }
 
   async function buildPreviewCore(seq){
-    const includeDraft = (State.view === "form");
-    const items = buildItemsForPacking(includeDraft);
+  const includeDraft = (State.view === "form");
+  const items = buildItemsForPacking(includeDraft);
 
-    if (!items.length){
-      showEmptyPreview("Sin previsualización", "Agrega productos para ver cómo se acomodan en las hojas.");
-      State.previewSlotsByProduct.clear();
-      State.previewDraftSlots = [];
-      updateTopButtons();
-      return;
-    }
+  if (!items.length){
+    showEmptyPreview("Sin previsualización", "Agrega productos para ver cómo se acomodan en las hojas.");
+    State.previewSlotsByProduct.clear();
+    State.previewDraftSlots = [];
+    updateTopButtons();
+    return;
+  }
 
-    const targetWidthPx = CONFIG.render.previewPngWidthPx;
-    const total = items.length;
+  const targetWidthPx = CONFIG.render.previewPngWidthPx;
+  
 
-    let done = 0;
-    await runWithConcurrency(items, CONFIG.render.previewConcurrency, async (it) => {
-      if (seq !== State.previewBuildSeq) return;
+  // ============================
+  // 1) Renderizar SOLO productos únicos (por renderKey)
+  // ============================
+  const unique = new Map(); // key -> product
+  for (const it of items){
+    const p = it.product;
+    if (!p.template || !p.size) continue;
+    const k = renderKey(p, targetWidthPx);
+    if (!unique.has(k)) unique.set(k, p);
+  }
 
-      const p = it.product;
-      if (!p.template || !p.size) return;
+  const rendered = new Map(); // key -> {pngNormal, pngRotated}
+  let done = 0;
+  const totalUnique = unique.size;
 
-      done++;
-      if (done % 8 === 0) setPreviewLoading(true, `Renderizando ${Math.min(done, total)}/${total}…`);
-
-      try{
-        const r = await renderProductToPngs(p, targetWidthPx);
-        it._png = (p.size === SIZE.halfH) ? r.pngRotated : r.pngNormal;
-      }catch(err){
-        console.warn("Render falló:", err);
-        it._png = "";
-      }
-    });
-
+  await runWithConcurrency([...unique.entries()], CONFIG.render.previewConcurrency, async ([k, p]) => {
     if (seq !== State.previewBuildSeq) return;
 
-    const pages = packAll(items);
-    const preview = $("paperPreview");
-    preview.innerHTML = "";
-    State.previewSlotsByProduct = new Map();
-    State.previewDraftSlots = [];
+    done++;
+    if (done % 2 === 0) {
+      setPreviewLoading(true, `Renderizando ${Math.min(done, totalUnique)}/${totalUnique}…`);
+    }
 
-    pages.forEach((page, pageIndex) => {
-      const shell = document.createElement("div");
-      shell.className = "page-shell";
-      shell.style.setProperty("--previewScale", CONFIG.previewScale);
+    try{
+      const r = await renderProductToPngs(p, targetWidthPx);
+      rendered.set(k, r);
+    }catch(err){
+      console.warn("Render falló:", err);
+      rendered.set(k, { pngNormal:"", pngRotated:"" });
+    }
+  });
 
-      const label = document.createElement("div");
-      label.className = "pageLabel";
-      label.textContent = `HOJA ${pageIndex+1}`;
-      shell.appendChild(label);
+  if (seq !== State.previewBuildSeq) return;
 
-      const inner = document.createElement("div");
-      inner.className = "page-inner";
+  // ============================
+  // 2) Asignar PNG a cada item (sin re-render)
+  // ============================
+  for (const it of items){
+    const p = it.product;
+    if (!p.template || !p.size) { it._png = ""; continue; }
 
-      const paper = document.createElement("div");
-      paper.className = "paper-page " + (page.type === "full" ? "paper-full" : "paper-grid");
+    const k = renderKey(p, targetWidthPx);
+    const r = rendered.get(k);
 
-      page.placements.forEach(pl => {
-        const it = pl.item;
-        if (!it._png) return;
+    it._png = (p.size === SIZE.halfH)
+      ? (r?.pngRotated || "")
+      : (r?.pngNormal || "");
+  }
 
-        const slot = document.createElement("div");
-        slot.className = "slot" + (it.isDraft ? " draft" : "");
-        slot.style.gridRow = `${pl.row} / span ${pl.rs}`;
-        slot.style.gridColumn = `${pl.col} / span ${pl.cs}`;
-        slot.dataset.productId = it.product.id || "";
+  // ============================
+  // 3) Packing + DOM (más barato)
+  // ============================
+  const pages = packAll(items);
+  const maxPages = CONFIG.render.previewMaxPages || Infinity;
+  const pagesToShow = pages.slice(0, maxPages);
+  const hidden = pages.length - pagesToShow.length;
 
-        if (it.isDraft) State.previewDraftSlots.push(slot);
 
-        if (!it.isDraft && it.product.id) {
-          const pid = it.product.id;
-          const p = State.products.find(x=>x.id===pid);
-          const c = colorFromIdx(p?.colorIdx || 0);
-          const g = glowFromIdx(p?.colorIdx || 0, true);
+  const preview = $("paperPreview");
+  preview.innerHTML = "";
 
-          slot.style.setProperty("--pairColor", c);
-          slot.style.setProperty("--pairGlowStrong", g);
+  State.previewSlotsByProduct = new Map();
+  State.previewDraftSlots = [];
 
-          const mark = document.createElement("div");
-          mark.className = "pairMark";
-          slot.appendChild(mark);
+  const productById = new Map(State.products.map(p => [p.id, p]));
+  const frag = document.createDocumentFragment();
 
-          if (!State.previewSlotsByProduct.has(pid)) State.previewSlotsByProduct.set(pid, []);
-          State.previewSlotsByProduct.get(pid).push(slot);
-        }
+  pagesToShow.forEach((page, pageIndex) => {
+    const shell = document.createElement("div");
+    shell.className = "page-shell";
+    shell.style.setProperty("--previewScale", CONFIG.previewScale);
 
-        const img = document.createElement("img");
-        img.src = it._png;
-        img.alt = "Etiqueta";
-        slot.appendChild(img);
+    const label = document.createElement("div");
+    label.className = "pageLabel";
+    label.textContent = `HOJA ${pageIndex + 1}`;
+    shell.appendChild(label);
 
-        if (it.isDraft) {
-          const tag = document.createElement("div");
-          tag.className = "draftTag";
-          tag.textContent = State.mode === "edit" ? "EDITANDO" : "AGREGANDO";
-          slot.appendChild(tag);
-        }
+    const inner = document.createElement("div");
+    inner.className = "page-inner";
 
-        paper.appendChild(slot);
-      });
+    const paper = document.createElement("div");
+    paper.className = "paper-page " + (page.type === "full" ? "paper-full" : "paper-grid");
 
-      inner.appendChild(paper);
-      shell.appendChild(inner);
-      preview.appendChild(shell);
+    page.placements.forEach(pl => {
+      const it = pl.item;
+      if (!it._png) return;
+
+      const slot = document.createElement("div");
+      slot.className = "slot" + (it.isDraft ? " draft" : "");
+      slot.style.gridRow = `${pl.row} / span ${pl.rs}`;
+      slot.style.gridColumn = `${pl.col} / span ${pl.cs}`;
+      slot.dataset.productId = it.product.id || "";
+
+      if (it.isDraft) State.previewDraftSlots.push(slot);
+
+      if (!it.isDraft && it.product.id) {
+        const pid = it.product.id;
+        const prod = productById.get(pid);
+
+        const c = colorFromIdx(prod?.colorIdx || 0);
+        const g = glowFromIdx(prod?.colorIdx || 0, true);
+
+        slot.style.setProperty("--pairColor", c);
+        slot.style.setProperty("--pairGlowStrong", g);
+
+        const mark = document.createElement("div");
+        mark.className = "pairMark";
+        slot.appendChild(mark);
+
+        if (!State.previewSlotsByProduct.has(pid)) State.previewSlotsByProduct.set(pid, []);
+        State.previewSlotsByProduct.get(pid).push(slot);
+      }
+
+      
+
+      const img = document.createElement("img");
+      img.src = it._png;
+      img.alt = "Etiqueta";
+      slot.appendChild(img);
+
+      if (it.isDraft) {
+        const tag = document.createElement("div");
+        tag.className = "draftTag";
+        tag.textContent = State.mode === "edit" ? "EDITANDO" : "AGREGANDO";
+        slot.appendChild(tag);
+      }
+
+      paper.appendChild(slot);
     });
 
-    updateTopButtons();
-  }
+    inner.appendChild(paper);
+    shell.appendChild(inner);
+    frag.appendChild(shell);
+  });
+
+  preview.appendChild(frag);
+
+  if (hidden > 0) {
+  const note = document.createElement("div");
+  note.className = "emptyPreview";
+  note.innerHTML = `<h4>Vista parcial</h4><p>Mostrando ${pagesToShow.length} de ${pages.length} hojas.</p>`;
+  preview.appendChild(note);
+}
+  updateTopButtons();
+}
+
 
   /* ============================
      PRINT / PDF (optimizado)
@@ -2277,18 +2494,47 @@ svg.insertBefore(style, svg.firstChild);
   }
 
   async function renderItemsForExport(items, targetWidthPx){
-    let i = 0;
-    const total = items.length;
-
-    await runWithConcurrency(items, CONFIG.render.exportConcurrency, async (it) => {
-      i++;
-      if (i % 10 === 0) setPreviewLoading(true, `Preparando exportación ${Math.min(i,total)}/${total}…`);
-
-      const p = it.product;
-      const r = await renderProductToPngs(p, targetWidthPx);
-      it._png = (p.size === SIZE.halfH) ? r.pngRotated : r.pngNormal;
-    });
+  // 1) únicos por clave (export)
+  const unique = new Map(); // key -> product
+  for (const it of items){
+    const p = it.product;
+    if (!p.template || !p.size) continue;
+    const k = renderKey(p, targetWidthPx, "export");
+    if (!unique.has(k)) unique.set(k, p);
   }
+
+  // 2) render únicos
+  let done = 0;
+  const totalUnique = unique.size;
+
+  const rendered = new Map(); // key -> {pngNormal, pngRotated}
+  await runWithConcurrency([...unique.entries()], CONFIG.render.exportConcurrency, async ([k, p]) => {
+    done++;
+    if (done % 2 === 0) setPreviewLoading(true, `Preparando exportación ${Math.min(done,totalUnique)}/${totalUnique}…`);
+
+    try{
+      const r = await renderProductToPngs(p, targetWidthPx, "export");
+      rendered.set(k, r);
+    }catch(e){
+      console.warn("Render export falló:", e);
+      rendered.set(k, { pngNormal:"", pngRotated:"" });
+    }
+  });
+
+  // 3) asignar png por item (sin re-render)
+  for (const it of items){
+    const p = it.product;
+    if (!p.template || !p.size) { it._png = ""; continue; }
+
+    const k = renderKey(p, targetWidthPx, "export");
+    const r = rendered.get(k);
+
+    it._png = (p.size === SIZE.halfH)
+      ? (r?.pngRotated || "")
+      : (r?.pngNormal || "");
+  }
+}
+
 
   async function buildPrintHtml(){
     const items = buildItemsForPacking(false);
@@ -2340,12 +2586,14 @@ svg.insertBefore(style, svg.firstChild);
     }
   }
 
- async function handlePdf(){
+ function nextFrame(){
+  return new Promise(r => requestAnimationFrame(() => r()));
+}
+
+async function handlePdf(){
   if (!State.products.length) return;
 
   const btn = $("btnPdf");
-
-  // 🔒 Bloquear botón + spinner
   setBtnLoading(btn, true);
 
   const items = buildItemsForPacking(false);
@@ -2355,16 +2603,11 @@ svg.insertBefore(style, svg.firstChild);
   setPreviewLoading(true, `Generando PDF (${totalLabels} etiquetas)…`);
 
   try{
-    // 🔁 Render secuencial (exportConcurrency = 1)
     await renderItemsForExport(items, targetWidthPx);
 
     const pages = packAll(items);
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "letter"
-    });
+    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"letter" });
 
     const W = 215.9, H = 279.4;
     const padGrid = 6, gap = 6;
@@ -2378,88 +2621,73 @@ svg.insertBefore(style, svg.firstChild);
       h: slotH
     });
 
-    
-    pages.forEach((pg, pageIndex) => {
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++){
+      const pg = pages[pageIndex];
       if (pageIndex > 0) doc.addPage("letter", "portrait");
 
-      // 🟦 Página completa
-      if (pg.type === "full") {
-        const pad = 10;
-        const slot = { x: pad, y: pad, w: W - 2 * pad, h: H - 2 * pad };
-        const it = pg.placements[0].item;
-        if (it._png) {
-          doc.addImage(
-            it._png,
-            "PNG",
-            slot.x,
-            slot.y,
-            slot.w,
-            slot.h,
-            undefined,
-            CONFIG.render.pdfCompression
-          );
-        }
-        return;
+      // ceder UI cada 1-2 páginas
+      if ((pageIndex & 1) === 0) {
+        setPreviewLoading(true, `Armando PDF ${pageIndex+1}/${pages.length}…`);
+        await nextFrame();
       }
 
-      // 🟩 Grid
-      pg.placements.forEach(pl => {
+      if (pg.type === "full") {
+        const pad = 10;
+        const slot = { x: pad, y: pad, w: W - 2*pad, h: H - 2*pad };
+
+        const it = pg.placements[0].item;
+        if (it?._png) {
+          const props = doc.getImageProperties(it._png);
+          const draw = fitContainRect(props.width, props.height, slot);
+          doc.addImage(it._png, "PNG", draw.x, draw.y, draw.w, draw.h, undefined, CONFIG.render.pdfCompression);
+        }
+        continue;
+      }
+
+      for (let j=0; j<pg.placements.length; j++){
+        const pl = pg.placements[j];
         const it = pl.item;
-        if (!it._png) return;
+        if (!it?._png) continue;
+
+        let box = null;
 
         if (pl.rs === 1 && pl.cs === 1) {
           const r1 = rect(pl.row, pl.col);
-          doc.addImage(
-            it._png,
-            "PNG",
-            r1.x,
-            r1.y,
-            r1.w,
-            r1.h,
-            undefined,
-            CONFIG.render.pdfCompression
-          );
-          return;
+          box = { x:r1.x, y:r1.y, w:r1.w, h:r1.h };
         }
 
         if (pl.rs === 1 && pl.cs === 2) {
           const r1 = rect(pl.row, 1);
           const r2 = rect(pl.row, 2);
-          doc.addImage(
-            it._png,
-            "PNG",
-            r1.x,
-            r1.y,
-            (r2.x + r2.w - r1.x),
-            r1.h,
-            undefined,
-            CONFIG.render.pdfCompression
-          );
+          box = { x:r1.x, y:r1.y, w:(r2.x+r2.w-r1.x), h:r1.h };
         }
-      });
-    });
 
-    // 💾 Descargar
+        if (!box) continue;
+
+        const props = doc.getImageProperties(it._png);
+        const draw = fitContainRect(props.width, props.height, box);
+
+        doc.addImage(it._png, "PNG", draw.x, draw.y, draw.w, draw.h, undefined, CONFIG.render.pdfCompression);
+
+        // cede UI cada varios addImage si son miles
+        if ((j & 15) === 0) await sleep(0);
+      }
+    }
+
     doc.save("etiquetas.pdf");
-
   } catch (e) {
     console.error(e);
     openModal({
       title: "Error PDF",
-      bodyHtml: `
-        <div class="modalText">
-          No se pudo generar el PDF.<br>
-          Baja la calidad en <b>CONFIG.render</b> o reduce la cantidad.
-        </div>
-      `,
+      bodyHtml: `<div class="modalText">No se pudo generar el PDF. Baja calidad en CONFIG.render o reduce cantidad.</div>`,
       actions: [{ text: "Cerrar", className: "btnNeutral", onClick: closeModal }]
     });
   } finally {
-    // 🔓 Liberar UI
     setPreviewLoading(false);
     setBtnLoading(btn, false);
   }
 }
+
 
   /* ============================
      EXCEL (sin cambios funcionales)
@@ -2736,6 +2964,15 @@ svg.insertBefore(style, svg.firstChild);
       });
     });
   }
+  const MAX_RENDER_CACHE = 400;
+
+function cacheSet(map, key, value){
+  map.set(key, value);
+  if (map.size > MAX_RENDER_CACHE){
+    const firstKey = map.keys().next().value;
+    map.delete(firstKey);
+  }
+}
 
   async function handleImportFile(file){
     if (!file) return;
@@ -2804,6 +3041,8 @@ svg.insertBefore(style, svg.firstChild);
         p.descuento = it.descuento || "";
         p.color = it.color || "";
         p.coverUrl = it.coverUrl || "";
+        p.logoUrl  = it.logoUrl  || "";
+
 
         p.template = e.template;
         p.size = e.size;
@@ -2961,11 +3200,13 @@ svg.insertBefore(style, svg.firstChild);
   /* ============================
      INIT
   ============================ */
+
   loadState();
   updateTopButtons();
   renderList();
   requestPreviewRebuild();
-  fetchApi();
+  // ✅ Al entrar/recargar: recarga API y sincroniza productos guardados
+  reloadApiAndSyncProducts({ silent: false });
 
 })();
 </script>
