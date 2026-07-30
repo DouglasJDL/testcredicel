@@ -710,8 +710,18 @@
   }
 
   function onlyDigits(str){ return (str ?? "").toString().replace(/[^\d]/g, ""); }
+  // El API a veces manda precios con decimales (ej. 1305.88) o con separador
+  // de miles (ej. "1,305.88"). Se interpreta como número y se redondea SIEMPRE
+  // hacia arriba al quetzal entero; borrar solo los símbolos pegaba los dígitos (130588).
   function sanitizeIntStr(raw){
-    let cleaned = onlyDigits(raw).slice(0, CONFIG.maxDigits);
+    let s = (raw ?? "").toString().trim().replace(/[^\d.,-]/g, "");
+    if (!s) return "";
+    if (s.includes(".")) s = s.replace(/,/g, "");
+    else if (/,\d{1,2}$/.test(s)) s = s.replace(/,(\d{1,2})$/, ".$1").replace(/,/g, "");
+    else s = s.replace(/,/g, "");
+    const n = parseFloat(s);
+    if (!Number.isFinite(n)) return "";
+    let cleaned = String(Math.ceil(Math.abs(n))).slice(0, CONFIG.maxDigits);
     if (cleaned.length > 1) cleaned = cleaned.replace(/^0+/, "") || "0";
     return cleaned;
   }
