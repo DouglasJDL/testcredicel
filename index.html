@@ -357,8 +357,9 @@
       position:fixed;inset:0;z-index:1000001;
       background:rgba(15,23,42,.62);
       backdrop-filter: blur(3px);
-      display:none;align-items:center;justify-content:center;
+      display:flex;align-items:center;justify-content:center;
       padding:18px;overflow:auto;
+      pointer-events:auto;
     }
     .migrateOverlay.show{display:flex}
     .migrateCard{
@@ -367,6 +368,7 @@
       box-shadow:0 30px 70px rgba(0,0,0,.30);
       overflow:hidden;
       margin:auto;
+      pointer-events:auto;
     }
     .migrateHead{
       padding:18px 20px;
@@ -422,15 +424,17 @@
 
     .deprecatedBar{
       display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-      border:1px solid #fcd34d;background:#fffbeb;color:#92400e;
+      border:1px solid #dc2626;background:#fef2f2;color:#7f1d1d;
       border-radius:12px;padding:8px 12px;margin:0 0 12px;
       font-size:12px;font-weight:800;line-height:1.35;
     }
-    .deprecatedBar button{
-      background:#f59e0b;color:#fff;border:none;
+    .deprecatedBar a{
+      background:#dc2626;color:#fff;border:none;
       padding:6px 10px;border-radius:10px;font-size:12px;font-weight:900;
+      text-decoration:none;display:inline-flex;align-items:center;
+      cursor:pointer;
     }
-    .deprecatedBar button:hover{background:#d97706}
+    .deprecatedBar a:hover{background:#b91c1c}
 
     @media print{
       html, body{margin:0 !important;padding:0 !important;background:#fff !important;}
@@ -457,14 +461,14 @@
   <div class="migrateOverlay" id="migrateOverlay" role="dialog" aria-modal="true" aria-labelledby="migrateTitle" aria-hidden="true">
     <div class="migrateCard">
       <div class="migrateHead">
-        <span class="migrateBadge">⚠️ Aviso importante</span>
-        <h3 id="migrateTitle">Este preciador ya no recibirá soporte</h3>
-        <p>Esta herramienta deja de tener mantenimiento y actualizaciones. No se corregirán errores ni se agregarán nuevos productos o plantillas.</p>
+        <span class="migrateBadge">⛔ Aviso importante</span>
+        <h3 id="migrateTitle">Esta herramienta está descontinuada</h3>
+        <p>Ya no recibe actualizaciones ni soporte. Por favor, utiliza el nuevo preciador en Odoo para continuar con tus operaciones.</p>
       </div>
 
       <div class="migrateBody">
         <div class="migrateNote">
-          Ya existe un <b>nuevo preciador</b> que se utiliza directamente desde <b>Odoo</b>. Ahí encontrarás la información actualizada y el soporte oficial.
+          El nuevo preciador está integrado directamente en <b>Odoo</b> y cuenta con soporte oficial y actualizaciones regulares.
         </div>
 
         <div class="migrateStep">
@@ -475,57 +479,17 @@
           </a>
         </div>
 
-        <div class="migrateDivider"></div>
-
-        <!-- Paso 2: confirmación -->
-        <div class="migrateStep" id="migrateAsk">
-          <h4>¿Pudiste utilizar el nuevo preciador en Odoo?</h4>
-          <div class="migrateBtns">
-            <button class="btnSuccess" id="btnMigrateYes" type="button">✅ Sí, ya lo estoy usando</button>
-            <button class="btnNeutral" id="btnMigrateNo" type="button">❌ No he podido usarlo</button>
-          </div>
-        </div>
-
-        <!-- Respuesta: SÍ -->
-        <div class="migrateStep migrateAnswer" id="migrateYes">
-          <div class="migrateNote" style="border-color:#bbf7d0;background:#f0fdf4;color:#14532d">
-            ¡Excelente! Continúa trabajando en el <b>nuevo preciador de Odoo</b>. Este preciador dejará de estar disponible más adelante.
-          </div>
-          <div class="migrateBtns" style="margin-top:12px;justify-content:space-between">
-            <button class="btnLinkQuiet" id="btnMigrateBack1" type="button" style="flex:0 0 auto">↩️ Volver</button>
-            <button class="btnLinkQuiet" id="btnMigrateUseOld2" type="button" style="flex:0 0 auto">Aun así necesito usar este preciador →</button>
-          </div>
-        </div>
-
-        <!-- Respuesta: NO -->
-        <div class="migrateStep migrateAnswer" id="migrateNo">
-          <h4>Sin problema, te ayudamos a migrar</h4>
-          <div class="migrateBtns">
-            <a class="btnWhats" id="btnMigrateHelp"
-               href="https://wa.me/50256355181?text=Hola%2C%20necesito%20ayuda%20para%20utilizar%20el%20nuevo%20preciador%20en%20Odoo."
-               target="_blank" rel="noopener noreferrer">
-              💬 Pedir ayuda por WhatsApp
-            </a>
-            <button class="btnNeutral" id="btnMigrateUseOld" type="button">🛠️ Usar este preciador mientras tanto</button>
-          </div>
-          <div class="help" style="margin-top:10px">
-            Puedes seguir usando este preciador temporalmente, pero recuerda que ya no recibe soporte.
-          </div>
-          <div class="migrateBtns" style="margin-top:12px">
-            <button class="btnLinkQuiet" id="btnMigrateBack2" type="button" style="flex:0 0 auto">↩️ Volver</button>
-          </div>
-        </div>
       </div>
 
       <div class="migrateFoot">
-        <span>Soporte de migración: WhatsApp +502 5635 5181</span>
+        <span>Soporte de migración: WhatsApp +502 7965 4934</span>
       </div>
     </div>
   </div>
 
   <div class="deprecatedBar" id="deprecatedBar">
-    <span>⚠️ Este preciador ya no recibe soporte. Utiliza el nuevo preciador en Odoo.</span>
-    <button type="button" id="btnOpenMigrate">Ver información</button>
+    <span>⛔ Esta herramienta está descontinuada. Utiliza el nuevo preciador en Odoo.</span>
+    <a href="https://drive.google.com/file/d/127ny_-Ed_m2yu4tfe5feV1oMQ02_mNbW/view?usp=sharing" target="_blank" rel="noopener noreferrer">📄 Ver documentación</a>
   </div>
 
   <h2>Editor de etiqueta</h2>
@@ -1188,6 +1152,17 @@
   }
 
   async function fetchApi(){
+    // DESCONTINUADO - API NO DISPONIBLE
+    State.apiLoading = true;
+    State.apiAll = [];
+    State.apiFiltered = [];
+    State.apiLoaded = false;
+    $("apiStatus").textContent = "❌ NO DISPONIBLE";
+    $("apiList").innerHTML = `<div class="apiEmpty">⛔ Esta herramienta está descontinuada.<br/>Utiliza el nuevo preciador en Odoo.</div>`;
+    State.apiLoading = false;
+    return false;
+
+    /* COMENTADO - LLAMADAS A API DESHABILITADAS
     if (State.apiLoading) return false;
     State.apiLoading = true;
     $("apiStatus").textContent = "cargando…";
@@ -1224,6 +1199,7 @@
     }finally{
       State.apiLoading = false;
     }
+    */
   }
 
   async function ensureApiLoaded(force=false){
@@ -3377,47 +3353,41 @@ function cacheSet(map, key, value){
 })();
 </script>
 
-<!-- ===== Aviso de migración al nuevo preciador (Odoo) ===== -->
+<!-- ===== Aviso de descontinuación del preciador (PERMANENTE - NO CLOSEABLE) ===== -->
 <script>
 (function(){
   var overlay = document.getElementById("migrateOverlay");
   if (!overlay) return;
 
-  var ask   = document.getElementById("migrateAsk");
-  var yes   = document.getElementById("migrateYes");
-  var no    = document.getElementById("migrateNo");
-  var SEEN  = "preciador_migracion_visto_v1";
+  // Mostrar el modal de forma permanente
+  overlay.classList.add("show");
+  overlay.setAttribute("aria-hidden","false");
 
-  function showStep(which){
-    ask.style.display = (which === "ask") ? "" : "none";
-    yes.classList.toggle("show", which === "yes");
-    no.classList.toggle("show",  which === "no");
-  }
+  // DESABILITAR TODO - No se puede cerrar ni hacer nada
+  overlay.addEventListener("click", function(e){ e.stopPropagation(); });
 
-  function open(){
-    showStep("ask");
-    overlay.classList.add("show");
-    overlay.setAttribute("aria-hidden","false");
-  }
+  // Deshabilitar ESC para cerrar
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape") e.preventDefault();
+  });
 
-  function close(){
-    overlay.classList.remove("show");
-    overlay.setAttribute("aria-hidden","true");
-    try{ sessionStorage.setItem(SEEN, "1"); }catch(e){}
-  }
+  // Deshabilitar todos los botones de la app
+  setTimeout(function(){
+    var buttons = document.querySelectorAll("button[type='button']:not(.btnDoc)");
+    buttons.forEach(function(btn){
+      btn.disabled = true;
+      btn.style.opacity = "0.5";
+      btn.style.cursor = "not-allowed";
+      btn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); });
+    });
 
-  document.getElementById("btnMigrateYes").addEventListener("click", function(){ showStep("yes"); });
-  document.getElementById("btnMigrateNo").addEventListener("click",  function(){ showStep("no");  });
-  document.getElementById("btnMigrateBack1").addEventListener("click", function(){ showStep("ask"); });
-  document.getElementById("btnMigrateBack2").addEventListener("click", function(){ showStep("ask"); });
-  document.getElementById("btnMigrateUseOld").addEventListener("click", close);
-  document.getElementById("btnMigrateUseOld2").addEventListener("click", close);
-  document.getElementById("btnOpenMigrate").addEventListener("click", open);
-
-  // Se muestra al ingresar (una vez por sesión del navegador).
-  var visto = false;
-  try{ visto = sessionStorage.getItem(SEEN) === "1"; }catch(e){}
-  if (!visto) open();
+    // Deshabilitar inputs
+    var inputs = document.querySelectorAll("input, select, textarea");
+    inputs.forEach(function(inp){
+      inp.disabled = true;
+      inp.style.opacity = "0.5";
+    });
+  }, 100);
 })();
 </script>
 
